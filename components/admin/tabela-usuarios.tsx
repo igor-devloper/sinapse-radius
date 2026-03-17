@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
 
 interface Usuario {
   id: string;
@@ -69,16 +70,23 @@ export function TabelaUsuarios({ usuarios }: { usuarios: Usuario[] }) {
                 </div>
               </td>
               <td className="px-5 py-3.5">
-                <select
+                <Select
                   value={u.cargo}
                   disabled={loading === u.id}
-                  onChange={(e) => atualizarCargo(u.id, e.target.value)}
-                  className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer ${cargoColor[u.cargo]}`}
+                  onValueChange={(v) => atualizarCargo(u.id, v)}
                 >
-                  {cargoOptions.map((c) => (
-                    <option key={c} value={c}>{c.toLowerCase()}</option>
-                  ))}
-                </select>
+                  <SelectTrigger className="text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer">
+                    <SelectValue placeholder="Selecionar cargo..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem key={u.id} value={u.id} className={` ${cargoColor[u.cargo]}`}>
+                      {cargoOptions.map((c) => (
+                        <option key={c} value={c}>{c.toLowerCase()}</option>
+                      ))}
+                    </SelectItem>
+
+                  </SelectContent>
+                </Select>
               </td>
               <td className="px-5 py-3.5 text-xs text-gray-600">
                 {u._count.ordensResponsavel} como responsável

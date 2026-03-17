@@ -10,20 +10,25 @@ const isPublicRoute = createRouteMatcher([
 const isAdminRoute = createRouteMatcher(["/admin(.*)", "/api/admin(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
-  // Rotas públicas passam direto
   if (isPublicRoute(req)) return NextResponse.next();
 
-  // Protege todas as outras rotas — redireciona para /sign-in se não autenticado
   const { userId, sessionClaims } = await auth.protect();
 
-  // Redireciona raiz para /dashboard (fallback caso env não resolva)
   if (req.nextUrl.pathname === "/") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  const cargo = (sessionClaims?.publicMetadata as { cargo?: string })?.cargo;
+  // ⚠️ Tenta ambos os caminhos possíveis do metadata
+  const cargo =
+    (sessionClaims?.publicMetadata as { cargo?: string })?.cargo ??
+    (sessionClaims?.metadata as { cargo?: string })?.cargo ??
+    (sessionClaims as Record<string, unknown>)?.cargo as string | undefined;
 
-  // Sem cargo: só pode acessar /sem-acesso
+  console.log("[Middleware] userId:", userId);
+  console.log("[Middleware] sessionClaims:", JSON.stringify(sessionClaims));
+  console.log("[Middleware] cargo:", cargo);
+  console.log("[Middleware] pathname:", req.nextUrl.pathname);
+
   if (!cargo) {
     if (req.nextUrl.pathname !== "/sem-acesso") {
       return NextResponse.redirect(new URL("/sem-acesso", req.url));
@@ -31,12 +36,10 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
-  // Com cargo: bloqueia /sem-acesso
   if (req.nextUrl.pathname === "/sem-acesso") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  // Rotas admin: só ADMIN
   if (isAdminRoute(req) && cargo !== "ADMIN") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }

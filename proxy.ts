@@ -1,29 +1,29 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 
-// Rotas públicas (sem autenticação)
 const isPublicRoute = createRouteMatcher([
   "/sign-in(.*)",
   "/sign-up(.*)",
   "/api/webhooks(.*)",
 ]);
 
-// Rotas restritas ao ADMIN
 const isAdminRoute = createRouteMatcher(["/admin(.*)", "/api/admin(.*)"]);
 
 export default clerkMiddleware(async (auth, req) => {
+  // Rotas públicas passam direto
   if (isPublicRoute(req)) return NextResponse.next();
 
+  // Protege todas as outras rotas — redireciona para /sign-in se não autenticado
   const { userId, sessionClaims } = await auth.protect();
 
-  if (!userId) {
-    return NextResponse.redirect(new URL("/sign-in", req.url));
+  // Redireciona raiz para /dashboard (fallback caso env não resolva)
+  if (req.nextUrl.pathname === "/") {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
   }
 
-  // Verifica cargo nas metadata do Clerk
-  const cargo = (sessionClaims?.metadata as { cargo?: string })?.cargo;
+  const cargo = (sessionClaims?.publicMetadata as { cargo?: string })?.cargo;
 
-  // Sem cargo cadastrado → redireciona para página de "aguardando acesso"
+  // Sem cargo: só pode acessar /sem-acesso
   if (!cargo) {
     if (req.nextUrl.pathname !== "/sem-acesso") {
       return NextResponse.redirect(new URL("/sem-acesso", req.url));
@@ -31,7 +31,12 @@ export default clerkMiddleware(async (auth, req) => {
     return NextResponse.next();
   }
 
-  // Rota admin: apenas ADMIN
+  // Com cargo: bloqueia /sem-acesso
+  if (req.nextUrl.pathname === "/sem-acesso") {
+    return NextResponse.redirect(new URL("/dashboard", req.url));
+  }
+
+  // Rotas admin: só ADMIN
   if (isAdminRoute(req) && cargo !== "ADMIN") {
     return NextResponse.redirect(new URL("/dashboard", req.url));
   }
@@ -40,5 +45,8 @@ export default clerkMiddleware(async (auth, req) => {
 });
 
 export const config = {
-  matcher: ["/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)","/(api|trpc)(.*)"],
+  matcher: [
+    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
+    "/(api|trpc)(.*)",
+  ],
 };

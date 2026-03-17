@@ -1,7 +1,7 @@
 import { UserButton } from "@clerk/nextjs";
 import { Bell } from "lucide-react";
 import { prisma } from "@/lib/prisma";
-import { calcularSLA } from "@/lib/sla";
+import { calcularSLA } from "@/lib/sla-manual";
 
 interface Usuario {
   nome: string;
@@ -9,14 +9,14 @@ interface Usuario {
 }
 
 export default async function Header({ usuario }: { usuario: Usuario }) {
-  // OS críticas com SLA vencendo em 30 dias
+  // OS ativas com SLA em estado crítico (≥ 90% do prazo decorrido ou vencido)
   const osAtivas = await prisma.ordemServico.findMany({
     where: { status: { notIn: ["CONCLUIDA", "CANCELADA"] } },
-    select: { id: true, dataEmissaoAxia: true },
+    select: { id: true, dataEmissaoAxia: true, tipoAtividade: true },
   });
   const alertas = osAtivas.filter((os) => {
-    const sla = calcularSLA(os.dataEmissaoAxia);
-    return sla.diasRestantes <= 30;
+    const sla = calcularSLA(os.dataEmissaoAxia, os.tipoAtividade);
+    return sla.vencido || sla.statusColor === "red" || sla.statusColor === "orange";
   }).length;
 
   return (
@@ -35,7 +35,7 @@ export default async function Header({ usuario }: { usuario: Usuario }) {
           <p className="text-sm font-medium text-gray-900">{usuario.nome}</p>
           <p className="text-xs text-gray-400 capitalize">{usuario.cargo.toLowerCase()}</p>
         </div>
-        <UserButton ur="/sign-in" />
+        <UserButton signInUrl="/sign-in" />
       </div>
     </header>
   );

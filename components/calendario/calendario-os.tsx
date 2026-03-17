@@ -7,15 +7,19 @@ import { ChevronLeft, ChevronRight, CalendarDays, AlertTriangle } from "lucide-r
 import { format, startOfMonth, endOfMonth, eachDayOfInterval, getDay, isSameMonth, isToday } from "date-fns";
 import { ptBR } from "date-fns/locale";
 
+import { ATIVIDADE_LABEL } from "@/lib/sla-manual";
+
 interface OSProgramada {
   id: string;
   numero: string;
   titulo: string;
-  tipoManutencao: string;
+  tipoAtividade: string;
   prioridade: string;
   status: string;
   dataProgramada: Date | null;
-  localAtivo: string;
+  subsistema: string;
+  componenteTag?: string | null;
+  containerId?: string | null;
   responsavel: { nome: string } | null;
 }
 
@@ -23,8 +27,9 @@ interface OSVencendo {
   id: string;
   numero: string;
   titulo: string;
-  dataLimite: Date;
+  dataLimiteSLA: Date;
   prioridade: string;
+  tipoAtividade: string;
 }
 
 const tipoColor: Record<string, string> = {
@@ -66,7 +71,7 @@ export function CalendarioOS({
   }
 
   for (const os of osVencendoNoMes) {
-    const key = new Date(os.dataLimite).toISOString().split("T")[0];
+    const key = new Date(os.dataLimiteSLA).toISOString().split("T")[0];
     if (!eventosPorDia[key]) eventosPorDia[key] = { programadas: [], vencimentos: [] };
     eventosPorDia[key].vencimentos.push(os);
   }
@@ -124,7 +129,7 @@ export function CalendarioOS({
                 </div>
                 <div className="space-y-0.5">
                   {eventos?.programadas.slice(0, 2).map((os) => (
-                    <Link key={os.id} href={`/ordens/${os.id}`} className={`block text-xs px-1.5 py-0.5 rounded border truncate ${tipoColor[os.tipoManutencao] ?? "bg-gray-100 text-gray-700 border-gray-200"}`}>
+                    <Link key={os.id} href={`/ordens/${os.id}`} className="block text-xs px-1.5 py-0.5 rounded border truncate bg-blue-100 text-blue-700 border-blue-200">
                       {os.titulo}
                     </Link>
                   ))}
@@ -157,7 +162,9 @@ export function CalendarioOS({
               <Link key={os.id} href={`/ordens/${os.id}`} className="flex items-center justify-between px-5 py-3 hover:bg-gray-50 transition-colors">
                 <div>
                   <p className="text-sm font-medium text-gray-900">{os.titulo}</p>
-                  <p className="text-xs text-gray-400 mt-0.5">{os.localAtivo}{os.responsavel && ` · ${os.responsavel.nome}`}</p>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    {os.subsistema}{os.componenteTag ? ` · ${os.componenteTag}` : ""}{os.responsavel && ` · ${os.responsavel.nome}`}
+                  </p>
                 </div>
                 <div className="text-xs text-gray-500 shrink-0 ml-4">
                   {os.dataProgramada && new Date(os.dataProgramada).toLocaleDateString("pt-BR")}
@@ -180,7 +187,7 @@ export function CalendarioOS({
               <Link key={os.id} href={`/ordens/${os.id}`} className="flex items-center justify-between bg-white rounded-lg px-3 py-2 hover:bg-red-50 transition-colors">
                 <span className="text-sm text-gray-800">{os.titulo}</span>
                 <span className="text-xs text-red-600 font-medium shrink-0 ml-4">
-                  {new Date(os.dataLimite).toLocaleDateString("pt-BR")}
+                  {new Date(os.dataLimiteSLA).toLocaleDateString("pt-BR")}
                 </span>
               </Link>
             ))}

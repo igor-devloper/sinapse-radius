@@ -12,6 +12,70 @@ datasource db {
   provider = "postgresql"
 }
 
+enum Cargo {
+  ADMIN
+  SUPERVISOR
+  TECNICO
+  VISUALIZADOR
+}
+
+enum StatusOS {
+  ABERTA
+  EM_ANDAMENTO
+  AGUARDANDO_PECA
+  PAUSADA
+  CONCLUIDA
+  CANCELADA
+}
+
+enum PrioridadeOS {
+  CRITICA // falha ativa, sistema parado ou em risco
+  ALTA // degradação de performance, ação imediata
+  MEDIA // manutenção programada dentro do prazo
+  BAIXA // melhorias, ajustes não críticos
+}
+
+// Atividades de manutenção mapeadas do Manual ANTSPACE HK3 V6
+// O prazo SLA é determinado pela atividade selecionada
+enum TipoAtividade {
+  // ── Manutenção preventiva / programada (prazos do manual) ──────────────────
+  LUBRIFICACAO_ROLAMENTOS // Seção 9.2.7 — a cada 2.000 h (~83 dias)
+  FILTRO_SUCCAO_ASPERSAO // Seção 9.3.1 — mensal
+  FILTRO_DUTO_FORNECIMENTO // Seção 9.3.1 — mensal
+  INSPECAO_ALETAS_TROCADOR // Seção 9.4.2 — mensal
+  MANUTENCAO_VENTILADOR_TORRE // Seção 9.4.5 — mensal
+  VERIFICACAO_QUADRO_CONTROLE // Seção 9.4.4 — mensal
+  INSPECAO_NIVEL_TANQUE_CONTAINER // Seção 9.3.5 — semanal
+  INSPECAO_NIVEL_TANQUE_TORRE // Seção 9.3.5 — diário
+  REGISTRO_TEMPERATURA_PRESSAO // Seção 9.2.2 — 2× ao dia
+  FILTRO_Y_REPOSICAO // Seção 9.3.1 — semestral
+  INSPECAO_VAZAMENTOS_TUBULACAO // Seção 9.3.2 — semestral
+  TESTE_PH_FLUIDO // Seção 9.3.6 — semestral
+  INSPECAO_ELETRICA_QCP // Seção 9.3.3 — semestral
+  DRENAGEM_TOPO_TORRE // Seção 9.4.3 — trimestral
+  SUBSTITUICAO_FLUIDO_REFRIGERANTE // Seção 9.3.4 — anual/1-2 anos
+  INSPECAO_ANUAL_GERAL // Seção 9.4.6 — anual
+
+  // ── Corretiva / Emergencial (prazo definido por urgência) ──────────────────
+  FALHA_ENERGIA
+  FALHA_BOMBA_CIRCULACAO
+  FALHA_VENTILADOR_EXAUSTAO
+  FALHA_BOMBA_REPOSICAO
+  ALARME_VAZAMENTO
+  ALARME_ALTA_TEMPERATURA
+  ALARME_ALTA_PRESSAO
+  ALARME_BAIXA_PRESSAO
+  ALARME_BAIXA_VAZAO
+  ALARME_CONDENSACAO
+  FALHA_VEDACAO_BOMBA
+  FALHA_VENTILADOR_TORRE
+  SUBSTITUICAO_VALVULA_EXAUSTAO
+  SUBSTITUICAO_VENTILADOR_TORRE
+  OUTRO
+}
+
+// ─── Usuário ─────────────────────────────────────────────────────────────────
+
 model Usuario {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -34,32 +98,35 @@ model Usuario {
 // ─── Ordem de Serviço ─────────────────────────────────────────────────────────
 
 model OrdemServico {
-  id             String         @id @default(cuid())
-  numero         String         @unique // ex: OS-2024-001
-  titulo         String
-  descricao      String
-  motivoOS       String // causa raiz / motivo detalhado
-  tipoManutencao TipoManutencao
-  status         StatusOS       @default(ABERTA)
-  prioridade     PrioridadeOS   @default(MEDIA)
+  id            String        @id @default(cuid())
+  numero        String        @unique // ex: OS-2024-0001
+  titulo        String
+  descricao     String
+  motivoOS      String // causa raiz / descrição detalhada do problema
+  tipoAtividade TipoAtividade
+  status        StatusOS      @default(ABERTA)
+  prioridade    PrioridadeOS  @default(MEDIA)
 
-  // SLA — Contrato Axia
-  dataEmissaoAxia DateTime // data/hora de emissão da OS pela Axia (CONTRATANTE)
-  prazoContratual Int      @default(24) // meses — conforme contrato
-  dataLimite      DateTime // calculado: dataEmissaoAxia + prazoContratual meses
+  // ── SLA — baseado no prazo da atividade (Manual ANTSPACE HK3 V6) ──────────
+  // dataEmissaoAxia: data/hora em que a OS foi emitida pela Axia (CONTRATANTE)
+  // prazoSLAHoras: prazo em horas calculado automaticamente pelo tipo de atividade
+  // dataLimiteSLA: dataEmissaoAxia + prazoSLAHoras
+  dataEmissaoAxia DateTime // data/hora da OS emitida pela Axia
+  prazoSLAHoras   Int // calculado pela lib/sla-manual.ts conforme TipoAtividade
+  dataLimiteSLA   DateTime // deadline: dataEmissaoAxia + prazoSLAHoras
   slaVencido      Boolean  @default(false)
 
-  // Programação
-  dataProgramada DateTime? // data agendada para execução
-  dataInicio     DateTime? // início real
-  dataConclusao  DateTime? // conclusão real
+  // ── Equipamento / Localização ─────────────────────────────────────────────
+  subsistema    String // ex: "Estação de Bombas", "Torre Seca", "QCP", "QDC"
+  componenteTag String? // TAG do componente, ex: "P01", "G04", "V202"
+  containerId   String? // identificador do container, ex: "HK3-01"
 
-  // Localização / Ativo
-  localAtivo  String // ex: "Bomba #3 — Setor A"
-  tag         String? // TAG do equipamento
-  coordenadas String? // lat,lng para mapa opcional
+  // ── Programação ───────────────────────────────────────────────────────────
+  dataProgramada DateTime?
+  dataInicio     DateTime?
+  dataConclusao  DateTime?
 
-  // Relações
+  // ── Relações ──────────────────────────────────────────────────────────────
   responsavelId String?
   responsavel   Usuario? @relation("Responsavel", fields: [responsavelId], references: [id])
   abertoPorId   String
@@ -74,6 +141,8 @@ model OrdemServico {
 
   @@map("ordens_servico")
 }
+
+// ─── Histórico de status ──────────────────────────────────────────────────────
 
 model HistoricoOS {
   id         String       @id @default(cuid())
@@ -112,39 +181,9 @@ model Anexo {
   os        OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
   nome      String
   url       String
-  tipo      String // mime type
-  tamanho   Int // bytes
+  tipo      String
+  tamanho   Int
   createdAt DateTime     @default(now())
 
   @@map("anexos")
-}
-
-enum PrioridadeOS {
-  CRITICA
-  ALTA
-  MEDIA
-  BAIXA
-}
-
-enum TipoManutencao {
-  CORRETIVA
-  PREVENTIVA
-  PREDITIVA
-  EMERGENCIAL
-}
-
-enum Cargo {
-  ADMIN
-  SUPERVISOR
-  TECNICO
-  VISUALIZADOR
-}
-
-enum StatusOS {
-  ABERTA
-  EM_ANDAMENTO
-  AGUARDANDO_PECA
-  PAUSADA
-  CONCLUIDA
-  CANCELADA
 }

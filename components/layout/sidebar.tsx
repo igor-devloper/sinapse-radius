@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import {
@@ -27,8 +28,7 @@ export default function Sidebar({ cargo }: { cargo: string }) {
     <aside className="w-60 h-full bg-white border-r border-gray-100 flex flex-col shrink-0">
       {/* Logo */}
       <div className="h-16 flex items-center px-6 border-b border-gray-100">
-        <div className="flex items-center gap-2.5">
-          {/* Ícone "sinapse" simplificado */}
+        {/* <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center">
             <span className="text-white text-xs font-bold">RS</span>
           </div>
@@ -36,12 +36,14 @@ export default function Sidebar({ cargo }: { cargo: string }) {
             <p className="text-sm font-semibold text-gray-900">Radius</p>
             <p className="text-xs text-violet-600 font-medium -mt-0.5">Sinapse</p>
           </div>
-        </div>
+        </div> */}
+
+        <Image src="/logo-radius.svg" alt="logo" width={300} height={300}/>
       </div>
 
       {/* Navegação */}
       <nav className="flex-1 px-3 py-4 space-y-0.5">
-        {visibleItems.map((item) => {
+        {visibleItems.map((item) => {''
           const active = pathname.startsWith(item.href);
           return (
             <Link

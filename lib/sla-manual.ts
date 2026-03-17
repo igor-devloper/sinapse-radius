@@ -1,60 +1,80 @@
 /**
  * lib/sla-manual.ts
- * 
- * Prazos de SLA derivados do Manual ANTSPACE HK3 V6 — Bitmain Technologies
- * Seção 9 — Manutenção do Sistema
- * 
- * Todos os prazos estão em HORAS para uniformidade de cálculo.
- * O prazo é aplicado a partir de dataEmissaoAxia (data/hora da OS emitida pela Axia).
+ *
+ * Prazos de SLA derivados de:
+ *   1. Manual ANTSPACE HK3 V6 — Seção 9 (manutenções preventivas)
+ *   2. Contrato Axia — Seção 1.3.4 (SLAs de operação corretiva)
+ *
+ * Tabela contratual Axia:
+ *   Máquinas offline até 10%   → Atuação: 5 dias (120h) / Resolução: 8 dias (192h)
+ *   Máquinas offline acima 10% → Atuação: 48h          / Resolução: 96h
+ *   Sistema offline             → Atuação: 48h          / Resolução: 96h
+ *
+ * Todos os prazos em HORAS para uniformidade.
  */
 
 import { addHours, differenceInHours, differenceInMinutes, isPast } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { format } from "date-fns";
 
-// ─── Tabela de prazos por atividade (em horas) ────────────────────────────────
+// ─── Tabela de prazos (em horas) ──────────────────────────────────────────────
+// Para corretivas: usamos o prazo de RESOLUÇÃO (mais crítico).
+// O campo slaAtuacaoHoras é informativo para exibição.
 
-export const PRAZO_HORAS: Record<string, number> = {
-  // ── Prazos do Manual ────────────────────────────────────────────────────────
-  LUBRIFICACAO_ROLAMENTOS:          2000,  // Seção 9.2.7 — exatamente 2.000h operação (~83 dias)
-  FILTRO_SUCCAO_ASPERSAO:           720,   // Seção 9.3.1 — mensal (~30 dias)
-  FILTRO_DUTO_FORNECIMENTO:         720,   // Seção 9.3.1 — mensal
-  INSPECAO_ALETAS_TROCADOR:         720,   // Seção 9.4.2 — mensal
-  MANUTENCAO_VENTILADOR_TORRE:      720,   // Seção 9.4.5 — mensal
-  VERIFICACAO_QUADRO_CONTROLE:      720,   // Seção 9.4.4 — mensal
-  INSPECAO_NIVEL_TANQUE_CONTAINER:  168,   // Seção 9.3.5 — semanal (7 dias)
-  INSPECAO_NIVEL_TANQUE_TORRE:      24,    // Seção 9.3.5 — diário
-  REGISTRO_TEMPERATURA_PRESSAO:     12,    // Seção 9.2.2 — 2× ao dia (a cada 12h)
-  FILTRO_Y_REPOSICAO:               4380,  // Seção 9.3.1 — semestral (~6 meses)
-  INSPECAO_VAZAMENTOS_TUBULACAO:    4380,  // Seção 9.3.2 — semestral
-  TESTE_PH_FLUIDO:                  4380,  // Seção 9.3.6 — semestral
-  INSPECAO_ELETRICA_QCP:            4380,  // Seção 9.3.3 — semestral
-  DRENAGEM_TOPO_TORRE:              2190,  // Seção 9.4.3 — trimestral (~3 meses)
-  SUBSTITUICAO_FLUIDO_REFRIGERANTE: 8760,  // Seção 9.3.4 — anual
-  INSPECAO_ANUAL_GERAL:             8760,  // Seção 9.4.6 — anual
+export interface PrazoSLA {
+  resolucaoHoras: number;   // prazo principal usado para calcular deadline
+  atuacaoHoras?: number;    // prazo de atuação (alerta antecipado)
+  fonte: string;            // referência do manual ou contrato
+}
 
-  // ── Corretivas / Emergenciais (prazo definido internamente pela gravidade) ──
-  FALHA_ENERGIA:                    4,     // emergência — resolver em até 4h
-  FALHA_BOMBA_CIRCULACAO:           4,     // emergência — risco de parada do container
-  FALHA_VENTILADOR_EXAUSTAO:        8,     // urgente — 8h para ação
-  FALHA_BOMBA_REPOSICAO:            8,
-  ALARME_VAZAMENTO:                 2,     // emergência — 2h para localizar e isolar
-  ALARME_ALTA_TEMPERATURA:          2,     // emergência — risco ao hardware
-  ALARME_ALTA_PRESSAO:              4,
-  ALARME_BAIXA_PRESSAO:             8,
-  ALARME_BAIXA_VAZAO:               8,
-  ALARME_CONDENSACAO:               24,    // ajustar temperatura-alvo em 24h
-  FALHA_VEDACAO_BOMBA:              8,
-  FALHA_VENTILADOR_TORRE:           24,
-  SUBSTITUICAO_VALVULA_EXAUSTAO:    48,
-  SUBSTITUICAO_VENTILADOR_TORRE:    48,
-  OUTRO:                            72,
+export const PRAZO_SLA: Record<string, PrazoSLA> = {
+  // ── Preventiva (Manual ANTSPACE HK3 V6, Seção 9) ─────────────────────────
+  LUBRIFICACAO_ROLAMENTOS:          { resolucaoHoras: 2000, fonte: "Manual §9.3.7 — a cada 2.000h" },
+  FILTRO_SUCCAO_ASPERSAO:           { resolucaoHoras: 720,  fonte: "Manual §9.3.1 — mensal" },
+  FILTRO_DUTO_FORNECIMENTO:         { resolucaoHoras: 720,  fonte: "Manual §9.3.1 — mensal" },
+  INSPECAO_ALETAS_TROCADOR:         { resolucaoHoras: 720,  fonte: "Manual §9.4.2 — mensal" },
+  MANUTENCAO_VENTILADOR_TORRE:      { resolucaoHoras: 720,  fonte: "Manual §9.4.5 — mensal" },
+  VERIFICACAO_QUADRO_CONTROLE:      { resolucaoHoras: 720,  fonte: "Manual §9.4.4 — mensal" },
+  INSPECAO_NIVEL_TANQUE_CONTAINER:  { resolucaoHoras: 168,  fonte: "Manual §9.3.5 — semanal" },
+  INSPECAO_NIVEL_TANQUE_TORRE:      { resolucaoHoras: 24,   fonte: "Manual §9.3.5 — diário" },
+  REGISTRO_TEMPERATURA_PRESSAO:     { resolucaoHoras: 12,   fonte: "Manual §9.2.2 — 2× ao dia" },
+  FILTRO_Y_REPOSICAO:               { resolucaoHoras: 4380, fonte: "Manual §9.3.1 — semestral" },
+  INSPECAO_VAZAMENTOS_TUBULACAO:    { resolucaoHoras: 4380, fonte: "Manual §9.3.2 — semestral" },
+  TESTE_PH_FLUIDO:                  { resolucaoHoras: 4380, fonte: "Manual §9.3.6 — semestral" },
+  INSPECAO_ELETRICA_QCP:            { resolucaoHoras: 4380, fonte: "Manual §9.3.3 — semestral" },
+  DRENAGEM_TOPO_TORRE:              { resolucaoHoras: 2190, fonte: "Manual §9.4.3 — trimestral" },
+  SUBSTITUICAO_FLUIDO_REFRIGERANTE: { resolucaoHoras: 8760, fonte: "Manual §9.3.4 — anual" },
+  INSPECAO_ANUAL_GERAL:             { resolucaoHoras: 8760, fonte: "Manual §9.4.6 — anual" },
+
+  // ── Corretiva — Contrato Axia §1.3.4 ─────────────────────────────────────
+  // Sistema offline (problema elétrico/hidráulico/comunicação/refrigeração)
+  // → Atuação: 48h | Resolução: 96h
+  FALHA_ENERGIA:              { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  FALHA_BOMBA_CIRCULACAO:     { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  FALHA_VENTILADOR_EXAUSTAO:  { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Máq. offline >10%" },
+  FALHA_BOMBA_REPOSICAO:      { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  ALARME_VAZAMENTO:           { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  ALARME_ALTA_TEMPERATURA:    { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  ALARME_ALTA_PRESSAO:        { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  ALARME_BAIXA_PRESSAO:       { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  ALARME_BAIXA_VAZAO:         { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  ALARME_CONDENSACAO:         { resolucaoHoras: 192, atuacaoHoras: 120, fonte: "Contrato Axia §1.3.4 — Máq. offline ≤10%" },
+  FALHA_VEDACAO_BOMBA:        { resolucaoHoras: 96,  atuacaoHoras: 48,  fonte: "Contrato Axia §1.3.4 — Sistema offline" },
+  FALHA_VENTILADOR_TORRE:     { resolucaoHoras: 192, atuacaoHoras: 120, fonte: "Contrato Axia §1.3.4 — Máq. offline ≤10%" },
+  SUBSTITUICAO_VALVULA_EXAUSTAO: { resolucaoHoras: 192, atuacaoHoras: 120, fonte: "Contrato Axia §1.3.4 — Máq. offline ≤10%" },
+  SUBSTITUICAO_VENTILADOR_TORRE: { resolucaoHoras: 192, atuacaoHoras: 120, fonte: "Contrato Axia §1.3.4 — Máq. offline ≤10%" },
+  OUTRO:                      { resolucaoHoras: 192, atuacaoHoras: 120, fonte: "Contrato Axia §1.3.4 — Máq. offline ≤10%" },
 };
 
-// Labels em português para exibição
+// Compat — mantém PRAZO_HORAS apontando para resolucaoHoras
+export const PRAZO_HORAS: Record<string, number> = Object.fromEntries(
+  Object.entries(PRAZO_SLA).map(([k, v]) => [k, v.resolucaoHoras])
+);
+
+// ─── Labels ───────────────────────────────────────────────────────────────────
 export const ATIVIDADE_LABEL: Record<string, string> = {
   LUBRIFICACAO_ROLAMENTOS:          "Lubrificação de rolamentos (bomba)",
-  FILTRO_SUCCAO_ASPERSAO:           "Limpeza filtro de sucção — aspersão torre",
+  FILTRO_SUCCAO_ASPERSAO:           "Limpeza filtro sucção — aspersão torre",
   FILTRO_DUTO_FORNECIMENTO:         "Limpeza filtro — duto de fornecimento",
   INSPECAO_ALETAS_TROCADOR:         "Inspeção/limpeza aletas trocador de calor",
   MANUTENCAO_VENTILADOR_TORRE:      "Manutenção ventiladores — torre seca",
@@ -86,42 +106,10 @@ export const ATIVIDADE_LABEL: Record<string, string> = {
   OUTRO:                            "Outro",
 };
 
-// Seção do manual de referência
-export const ATIVIDADE_REFERENCIA_MANUAL: Record<string, string> = {
-  LUBRIFICACAO_ROLAMENTOS:          "Seção 9.3.7 — Manutenção da bomba de água",
-  FILTRO_SUCCAO_ASPERSAO:           "Seção 9.3.1 — Manutenção de filtros",
-  FILTRO_DUTO_FORNECIMENTO:         "Seção 9.3.1 — Manutenção de filtros",
-  INSPECAO_ALETAS_TROCADOR:         "Seção 9.4.2 — Manutenção das aletas",
-  MANUTENCAO_VENTILADOR_TORRE:      "Seção 9.4.5 — Manutenção do ventilador",
-  VERIFICACAO_QUADRO_CONTROLE:      "Seção 9.4.4 — Manutenção do quadro de controle",
-  INSPECAO_NIVEL_TANQUE_CONTAINER:  "Seção 9.3.5 — Inspeção do nível do tanque",
-  INSPECAO_NIVEL_TANQUE_TORRE:      "Seção 9.3.5 — Inspeção do nível do tanque",
-  REGISTRO_TEMPERATURA_PRESSAO:     "Seção 9.2.2 — Verificação de aplicação",
-  FILTRO_Y_REPOSICAO:               "Seção 9.3.1 — Manutenção de filtros",
-  INSPECAO_VAZAMENTOS_TUBULACAO:    "Seção 9.3.2 — Manutenção de tubulações",
-  TESTE_PH_FLUIDO:                  "Seção 9.3.6 — Manutenção do fluido refrigerante",
-  INSPECAO_ELETRICA_QCP:            "Seção 9.3.3 — Manutenção de componentes elétricos",
-  DRENAGEM_TOPO_TORRE:              "Seção 9.4.3 — Manutenção da porta de drenagem",
-  SUBSTITUICAO_FLUIDO_REFRIGERANTE: "Seção 9.3.4 — Drenagem do fluido refrigerante",
-  INSPECAO_ANUAL_GERAL:             "Seção 9.4.6 — Outros",
-  FALHA_ENERGIA:                    "Seção 8.1 — Falha de energia",
-  FALHA_BOMBA_CIRCULACAO:           "Seção 8.1 — Falha da bomba de circulação",
-  FALHA_VENTILADOR_EXAUSTAO:        "Seção 8.1 — Falha do ventilador de exaustão",
-  FALHA_BOMBA_REPOSICAO:            "Seção 8.1 — Falha da bomba de reposição",
-  ALARME_VAZAMENTO:                 "Seção 8.1 — Alarme de vazamento",
-  ALARME_ALTA_TEMPERATURA:          "Seção 8.1 — Alarme de alta temperatura",
-  ALARME_ALTA_PRESSAO:              "Seção 8.1 — Alarme de alta pressão",
-  ALARME_BAIXA_PRESSAO:             "Seção 8.1 — Alarme de baixa pressão de retorno",
-  ALARME_BAIXA_VAZAO:               "Seção 8.1 — Alarme de baixa vazão",
-  ALARME_CONDENSACAO:               "Seção 8.1 — Alarme de condensação",
-  FALHA_VEDACAO_BOMBA:              "Seção 8.1 — Vazamento no selo mecânico",
-  FALHA_VENTILADOR_TORRE:           "Seção 8.2 — Falhas da torre seca",
-  SUBSTITUICAO_VALVULA_EXAUSTAO:    "Seção 8.2 — Substituição da válvula de exaustão",
-  SUBSTITUICAO_VENTILADOR_TORRE:    "Seção 8.2 — Substituição do ventilador",
-  OUTRO:                            "—",
-};
+export const ATIVIDADE_REFERENCIA_MANUAL: Record<string, string> = Object.fromEntries(
+  Object.entries(PRAZO_SLA).map(([k, v]) => [k, v.fonte])
+);
 
-// Subsistemas do ANTSPACE HK3
 export const SUBSISTEMAS = [
   "Estação de Bombas",
   "Torre Seca",
@@ -138,52 +126,29 @@ export const SUBSISTEMAS = [
   "Geral",
 ];
 
-// ─── Tipos de atividade agrupados para o formulário ──────────────────────────
-
 export const ATIVIDADES_PREVENTIVAS = [
-  "LUBRIFICACAO_ROLAMENTOS",
-  "FILTRO_SUCCAO_ASPERSAO",
-  "FILTRO_DUTO_FORNECIMENTO",
-  "INSPECAO_ALETAS_TROCADOR",
-  "MANUTENCAO_VENTILADOR_TORRE",
-  "VERIFICACAO_QUADRO_CONTROLE",
-  "INSPECAO_NIVEL_TANQUE_CONTAINER",
-  "INSPECAO_NIVEL_TANQUE_TORRE",
-  "REGISTRO_TEMPERATURA_PRESSAO",
-  "FILTRO_Y_REPOSICAO",
-  "INSPECAO_VAZAMENTOS_TUBULACAO",
-  "TESTE_PH_FLUIDO",
-  "INSPECAO_ELETRICA_QCP",
-  "DRENAGEM_TOPO_TORRE",
-  "SUBSTITUICAO_FLUIDO_REFRIGERANTE",
-  "INSPECAO_ANUAL_GERAL",
+  "LUBRIFICACAO_ROLAMENTOS","FILTRO_SUCCAO_ASPERSAO","FILTRO_DUTO_FORNECIMENTO",
+  "INSPECAO_ALETAS_TROCADOR","MANUTENCAO_VENTILADOR_TORRE","VERIFICACAO_QUADRO_CONTROLE",
+  "INSPECAO_NIVEL_TANQUE_CONTAINER","INSPECAO_NIVEL_TANQUE_TORRE","REGISTRO_TEMPERATURA_PRESSAO",
+  "FILTRO_Y_REPOSICAO","INSPECAO_VAZAMENTOS_TUBULACAO","TESTE_PH_FLUIDO",
+  "INSPECAO_ELETRICA_QCP","DRENAGEM_TOPO_TORRE","SUBSTITUICAO_FLUIDO_REFRIGERANTE","INSPECAO_ANUAL_GERAL",
 ];
 
 export const ATIVIDADES_CORRETIVAS = [
-  "FALHA_ENERGIA",
-  "FALHA_BOMBA_CIRCULACAO",
-  "FALHA_VENTILADOR_EXAUSTAO",
-  "FALHA_BOMBA_REPOSICAO",
-  "ALARME_VAZAMENTO",
-  "ALARME_ALTA_TEMPERATURA",
-  "ALARME_ALTA_PRESSAO",
-  "ALARME_BAIXA_PRESSAO",
-  "ALARME_BAIXA_VAZAO",
-  "ALARME_CONDENSACAO",
-  "FALHA_VEDACAO_BOMBA",
-  "FALHA_VENTILADOR_TORRE",
-  "SUBSTITUICAO_VALVULA_EXAUSTAO",
-  "SUBSTITUICAO_VENTILADOR_TORRE",
-  "OUTRO",
+  "FALHA_ENERGIA","FALHA_BOMBA_CIRCULACAO","FALHA_VENTILADOR_EXAUSTAO","FALHA_BOMBA_REPOSICAO",
+  "ALARME_VAZAMENTO","ALARME_ALTA_TEMPERATURA","ALARME_ALTA_PRESSAO","ALARME_BAIXA_PRESSAO",
+  "ALARME_BAIXA_VAZAO","ALARME_CONDENSACAO","FALHA_VEDACAO_BOMBA","FALHA_VENTILADOR_TORRE",
+  "SUBSTITUICAO_VALVULA_EXAUSTAO","SUBSTITUICAO_VENTILADOR_TORRE","OUTRO",
 ];
 
-// ─── Calculador de SLA ────────────────────────────────────────────────────────
-
+// ─── Tipos ────────────────────────────────────────────────────────────────────
 export interface SLAInfo {
   tipoAtividade: string;
-  prazoHoras: number;
+  prazoHoras: number;           // resolucaoHoras
+  atuacaoHoras?: number;        // prazo de atuação (corretivas)
   dataEmissaoAxia: Date;
-  dataLimiteSLA: Date;
+  dataLimiteSLA: Date;          // deadline de resolução
+  dataLimiteAtuacao?: Date;     // deadline de atuação (corretivas)
   horasRestantes: number;
   minutosRestantes: number;
   percentualDecorrido: number;
@@ -192,22 +157,27 @@ export interface SLAInfo {
   statusColor: "green" | "yellow" | "orange" | "red";
   tempoFormatado: string;
   referenciaManual: string;
+  isCorretiva: boolean;
 }
 
+// ─── Calculador ───────────────────────────────────────────────────────────────
 export function calcularSLA(dataEmissaoAxia: Date, tipoAtividade: string): SLAInfo {
-  const prazoHoras = PRAZO_HORAS[tipoAtividade] ?? 72;
+  const prazoConfig = PRAZO_SLA[tipoAtividade] ?? { resolucaoHoras: 72, fonte: "—" };
+  const prazoHoras = prazoConfig.resolucaoHoras;
+  const atuacaoHoras = prazoConfig.atuacaoHoras;
+
   const dataLimiteSLA = addHours(dataEmissaoAxia, prazoHoras);
+  const dataLimiteAtuacao = atuacaoHoras ? addHours(dataEmissaoAxia, atuacaoHoras) : undefined;
+
   const agora = new Date();
   const horasRestantes = differenceInHours(dataLimiteSLA, agora);
   const minutosRestantes = differenceInMinutes(dataLimiteSLA, agora);
   const vencido = isPast(dataLimiteSLA);
-
-  const totalHoras = prazoHoras;
   const horasDecorridas = differenceInHours(agora, dataEmissaoAxia);
-  const percentualDecorrido = Math.min(100, Math.max(0, Math.round((horasDecorridas / totalHoras) * 100)));
+  const percentualDecorrido = Math.min(100, Math.max(0, Math.round((horasDecorridas / prazoHoras) * 100)));
 
-  // Thresholds relativos ao prazo (percentual)
   const pct = percentualDecorrido;
+  const isCorretiva = ATIVIDADES_CORRETIVAS.includes(tipoAtividade);
 
   let statusLabel: string;
   let statusColor: SLAInfo["statusColor"];
@@ -217,12 +187,10 @@ export function calcularSLA(dataEmissaoAxia: Date, tipoAtividade: string): SLAIn
     statusLabel = "SLA Vencido";
     statusColor = "red";
     const hAtrasado = Math.abs(horasRestantes);
-    if (hAtrasado < 24) {
-      tempoFormatado = `Vencido há ${hAtrasado}h`;
-    } else {
-      tempoFormatado = `Vencido há ${Math.floor(hAtrasado / 24)}d ${hAtrasado % 24}h`;
-    }
-  } else if (pct >= 90 || horasRestantes <= 2) {
+    tempoFormatado = hAtrasado < 24
+      ? `Vencido há ${hAtrasado}h`
+      : `Vencido há ${Math.floor(hAtrasado / 24)}d ${hAtrasado % 24}h`;
+  } else if (pct >= 90 || horasRestantes <= (isCorretiva ? 4 : 2)) {
     statusLabel = "Crítico";
     statusColor = "red";
     tempoFormatado = horasRestantes < 1
@@ -249,18 +217,12 @@ export function calcularSLA(dataEmissaoAxia: Date, tipoAtividade: string): SLAIn
   }
 
   return {
-    tipoAtividade,
-    prazoHoras,
-    dataEmissaoAxia,
-    dataLimiteSLA,
-    horasRestantes,
-    minutosRestantes,
-    percentualDecorrido,
-    vencido,
-    statusLabel,
-    statusColor,
-    tempoFormatado,
-    referenciaManual: ATIVIDADE_REFERENCIA_MANUAL[tipoAtividade] ?? "—",
+    tipoAtividade, prazoHoras, atuacaoHoras,
+    dataEmissaoAxia, dataLimiteSLA, dataLimiteAtuacao,
+    horasRestantes, minutosRestantes, percentualDecorrido, vencido,
+    statusLabel, statusColor, tempoFormatado,
+    referenciaManual: prazoConfig.fonte,
+    isCorretiva,
   };
 }
 
@@ -275,13 +237,12 @@ export function formatarDataCurta(data: Date): string {
 export function prazoFormatado(horas: number): string {
   if (horas < 24) return `${horas}h`;
   if (horas < 168) return `${Math.floor(horas / 24)} dias`;
-  if (horas < 720) return `${Math.floor(horas / 168)} semanas`;
+  if (horas < 720) return `${Math.floor(horas / 168)} sem.`;
   if (horas < 8760) return `${Math.floor(horas / 720)} meses`;
   return `${Math.floor(horas / 8760)} ano(s)`;
 }
 
 export function gerarNumeroOS(sequencial: number): string {
   const ano = new Date().getFullYear();
-  const num = String(sequencial).padStart(4, "0");
-  return `OS-${ano}-${num}`;
+  return `OS-${ano}-${String(sequencial).padStart(4, "0")}`;
 }

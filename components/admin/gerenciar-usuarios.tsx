@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { toast } from "@/components/ui/use-toast";
 import {
   Select,
   SelectContent,
@@ -9,10 +8,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, Mail } from "lucide-react";
+import { toast } from "sonner";
 
 type Cargo = "ADMIN" | "SUPERVISOR" | "TECNICO" | "VISUALIZADOR";
 
@@ -27,13 +26,20 @@ type Usuario = {
 };
 
 const cargoColor: Record<Cargo, string> = {
-  ADMIN: "bg-violet-100 text-violet-700",
-  SUPERVISOR: "bg-blue-100 text-blue-700",
-  TECNICO: "bg-teal-100 text-teal-700",
+  ADMIN:        "bg-violet-100 text-violet-700",
+  SUPERVISOR:   "bg-blue-100 text-blue-700",
+  TECNICO:      "bg-teal-100 text-teal-700",
   VISUALIZADOR: "bg-gray-100 text-gray-600",
 };
 
-async function atualizarCargo(usuarioId: string, cargo: Cargo, ativo?: boolean) {
+const cargoLabel: Record<Cargo, string> = {
+  ADMIN:        "Admin",
+  SUPERVISOR:   "Supervisor",
+  TECNICO:      "Técnico",
+  VISUALIZADOR: "Visualizador",
+};
+
+async function atualizarUsuario(usuarioId: string, cargo: Cargo, ativo?: boolean) {
   const res = await fetch("/api/admin/usuarios", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -55,13 +61,17 @@ export function GerenciarUsuarios({ usuarios: usuariosInicial }: { usuarios: Usu
     setLoadingId(usuarioId);
     startTransition(async () => {
       try {
-        await atualizarCargo(usuarioId, novoCargo);
+        await atualizarUsuario(usuarioId, novoCargo);
         setUsuarios((prev) =>
           prev.map((u) => (u.id === usuarioId ? { ...u, cargo: novoCargo } : u))
         );
-        toast({ title: "Cargo atualizado", description: `${usuario.nome} agora é ${novoCargo}` });
+        toast.success("Cargo atualizado", {
+          description: `${usuario.nome} agora é ${cargoLabel[novoCargo]}.`,
+        });
       } catch {
-        toast({ title: "Erro", description: "Não foi possível atualizar o cargo.", variant: "destructive" });
+        toast.error("Erro ao atualizar cargo", {
+          description: "Não foi possível salvar a alteração. Tente novamente.",
+        });
       } finally {
         setLoadingId(null);
       }
@@ -75,13 +85,17 @@ export function GerenciarUsuarios({ usuarios: usuariosInicial }: { usuarios: Usu
     setLoadingId(usuarioId + "-ativo");
     startTransition(async () => {
       try {
-        await atualizarCargo(usuarioId, usuario.cargo, ativo);
+        await atualizarUsuario(usuarioId, usuario.cargo, ativo);
         setUsuarios((prev) =>
           prev.map((u) => (u.id === usuarioId ? { ...u, ativo } : u))
         );
-        toast({ title: ativo ? "Usuário ativado" : "Usuário desativado" });
+        toast.success(ativo ? "Usuário ativado" : "Usuário desativado", {
+          description: `${usuario.nome} foi ${ativo ? "reativado" : "desativado"} com sucesso.`,
+        });
       } catch {
-        toast({ title: "Erro", description: "Não foi possível alterar o status.", variant: "destructive" });
+        toast.error("Erro ao alterar status", {
+          description: "Não foi possível alterar o status do usuário.",
+        });
       } finally {
         setLoadingId(null);
       }

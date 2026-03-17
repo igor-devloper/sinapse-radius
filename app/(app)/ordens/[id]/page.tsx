@@ -1,0 +1,246 @@
+import { notFound } from "next/navigation";
+import { prisma } from "@/lib/prisma";
+import { auth } from "@clerk/nextjs/server";
+import { calcularSLA, formatarDataBR, formatarDataCurta, ATIVIDADE_LABEL } from "@/lib/sla-manual";
+import { SLABadge } from "@/components/os/sla-badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Separator } from "@/components/ui/separator";
+import { Calendar, Clock, CheckCircle2, AlertTriangle, FileText, Tag, Server, Cpu, ArrowLeft } from "lucide-react";
+import { AtualizarStatusOS } from "@/components/os/atualizar-status";
+import { ComentariosOS } from "@/components/os/comentarios";
+import { HistoricoTimeline } from "@/components/os/historico-timeline";
+import { AnexosOS } from "@/components/os/anexos-os";
+import Link from "next/link";
+
+const prioridadeMap: Record<string, { label: string; class: string; dot: string }> = {
+  CRITICA: { label: "Crítica", class: "bg-red-100 text-red-700 border-red-200",       dot: "bg-red-500" },
+  ALTA:    { label: "Alta",    class: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-400" },
+  MEDIA:   { label: "Média",   class: "bg-yellow-100 text-yellow-700 border-yellow-200", dot: "bg-yellow-400" },
+  BAIXA:   { label: "Baixa",   class: "bg-green-100 text-green-700 border-green-200",   dot: "bg-green-500" },
+};
+
+const statusMap: Record<string, { label: string; class: string }> = {
+  ABERTA:          { label: "Aberta",          class: "bg-orange-100 text-orange-700 border-orange-200" },
+  EM_ANDAMENTO:    { label: "Em andamento",     class: "bg-blue-100 text-blue-700 border-blue-200" },
+  AGUARDANDO_PECA: { label: "Aguardando peça",  class: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  PAUSADA:         { label: "Pausada",          class: "bg-gray-100 text-gray-600 border-gray-200" },
+  CONCLUIDA:       { label: "Concluída",        class: "bg-green-100 text-green-700 border-green-200" },
+  CANCELADA:       { label: "Cancelada",        class: "bg-red-100 text-red-600 border-red-200" },
+};
+
+export default async function OSDetailPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
+  const { userId } = await auth();
+  const usuario = await prisma.usuario.findUnique({
+    where: { clerkId: userId! },
+    select: { cargo: true },
+  });
+
+  const os = await prisma.ordemServico.findUnique({
+    where: { id: (await params).id },
+    include: {
+      responsavel: { select: { id: true, nome: true, email: true, cargo: true, avatarUrl: true } },
+      abertoPor:   { select: { id: true, nome: true, email: true } },
+      comentarios: {
+        include: { usuario: { select: { id: true, nome: true, avatarUrl: true } } },
+        orderBy: { createdAt: "asc" },
+      },
+      historicoOS: {
+        include: { usuario: { select: { id: true, nome: true } } },
+        orderBy: { createdAt: "asc" },
+      },
+      anexos: { orderBy: { createdAt: "asc" } },
+    },
+  });
+
+  if (!os) notFound();
+
+  const sla = calcularSLA(os.dataEmissaoAxia, os.tipoAtividade);
+  const prioridade = prioridadeMap[os.prioridade];
+  const status = statusMap[os.status];
+  const canEdit = ["ADMIN","SUPERVISOR","TECNICO"].includes(usuario?.cargo ?? "");
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6 pb-10">
+      {/* ── Breadcrumb ───────────────────────────────────────────── */}
+      <div className="flex items-center gap-2">
+        <Link href="/ordens" className="p-2 rounded-xl hover:bg-gray-100 transition-colors text-gray-400 hover:text-gray-700">
+          <ArrowLeft className="w-4 h-4" />
+        </Link>
+        <span className="text-sm text-gray-400">Ordens de Serviço</span>
+        <span className="text-gray-300">/</span>
+        <span className="text-sm font-mono text-gray-600">{os.numero}</span>
+      </div>
+
+      {/* ── Header ───────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-2 min-w-0">
+            {/* Badges */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${status.class}`}>
+                {status.label}
+              </span>
+              <span className={`text-xs px-2.5 py-1 rounded-full font-medium border flex items-center gap-1 ${prioridade.class}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${prioridade.dot}`} />
+                {prioridade.label}
+              </span>
+              <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-purple-50 text-purple-700 border border-purple-100">
+                {ATIVIDADE_LABEL[os.tipoAtividade] ?? os.tipoAtividade}
+              </span>
+            </div>
+
+            {/* Título */}
+            <h1 className="text-2xl font-bold text-gray-900 leading-tight">{os.titulo}</h1>
+
+            {/* Localização */}
+            <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
+              <span className="flex items-center gap-1.5">
+                <Server className="w-3.5 h-3.5 text-gray-400" />
+                {os.subsistema}
+              </span>
+              {os.componenteTag && (
+                <span className="flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-gray-400" />
+                  {os.componenteTag}
+                </span>
+              )}
+              {os.containerId && (
+                <span className="flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-gray-400" />
+                  {os.containerId}
+                </span>
+              )}
+            </div>
+          </div>
+
+          {canEdit && <AtualizarStatusOS osId={os.id} statusAtual={os.status} />}
+        </div>
+      </div>
+
+      {/* ── Grid principal ───────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Coluna principal */}
+        <div className="lg:col-span-2 space-y-5">
+          {/* SLA */}
+          <SLABadge sla={sla} showProgress />
+
+          {/* Descrição */}
+          <Card className="border-gray-100 shadow-sm rounded-2xl">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <FileText className="w-4 h-4 text-gray-400" />
+                Descrição e Motivo
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div>
+                <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Descrição</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{os.descricao}</p>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Motivo / Causa raiz</p>
+                <p className="text-sm text-gray-700 leading-relaxed">{os.motivoOS}</p>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Anexos */}
+          <AnexosOS
+            osId={os.id}
+            anexos={os.anexos}
+            canUpload={canEdit}
+          />
+
+          {/* Comentários */}
+          <ComentariosOS osId={os.id} comentarios={os.comentarios} />
+        </div>
+
+        {/* Coluna lateral */}
+        <div className="space-y-4">
+          {/* Datas */}
+          <Card className="border-gray-100 shadow-sm rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-gray-700">Datas e prazos</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <InfoRow icon={Clock}         label="Emissão OS Axia"     value={formatarDataBR(os.dataEmissaoAxia)} highlight />
+              <InfoRow icon={AlertTriangle} label="Prazo SLA resolução" value={formatarDataBR(sla.dataLimiteSLA)} danger />
+              {sla.dataLimiteAtuacao && (
+                <InfoRow icon={AlertTriangle} label="Prazo SLA atuação" value={formatarDataBR(sla.dataLimiteAtuacao)} warn />
+              )}
+              <Separator />
+              <InfoRow icon={Calendar}     label="Data programada"  value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"} />
+              <InfoRow icon={Calendar}     label="Início real"      value={os.dataInicio ? formatarDataBR(os.dataInicio) : "—"} />
+              <InfoRow icon={CheckCircle2} label="Conclusão"        value={os.dataConclusao ? formatarDataBR(os.dataConclusao) : "—"} />
+              <InfoRow icon={Calendar}     label="Abertura sistema" value={formatarDataBR(os.createdAt)} />
+            </CardContent>
+          </Card>
+
+          {/* Equipe */}
+          <Card className="border-gray-100 shadow-sm rounded-2xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm font-semibold text-gray-700">Equipe</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Aberto por</p>
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                    style={{ background: "#1E1B4B" }}>
+                    {os.abertoPor.nome.charAt(0)}
+                  </div>
+                  <p className="text-sm font-medium text-gray-800">{os.abertoPor.nome}</p>
+                </div>
+              </div>
+              <Separator />
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Responsável técnico</p>
+                {os.responsavel ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white"
+                      style={{ background: "#8B1FA9" }}>
+                      {os.responsavel.nome.charAt(0)}
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium text-gray-800">{os.responsavel.nome}</p>
+                      <p className="text-xs text-purple-600 capitalize">{os.responsavel.cargo.toLowerCase()}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-400 italic">Não atribuído</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Timeline */}
+          <HistoricoTimeline historico={os.historicoOS} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoRow({
+  icon: Icon, label, value, highlight, danger, warn,
+}: {
+  icon: React.ElementType; label: string; value: string;
+  highlight?: boolean; danger?: boolean; warn?: boolean;
+}) {
+  return (
+    <div className="flex items-start gap-2.5">
+      <Icon className="w-3.5 h-3.5 text-gray-400 mt-0.5 shrink-0" />
+      <div>
+        <p className="text-xs text-gray-400">{label}</p>
+        <p className={`text-sm ${highlight ? "font-bold text-purple-800" : danger ? "font-semibold text-red-700" : warn ? "font-semibold text-orange-700" : "text-gray-700"}`}>
+          {value}
+        </p>
+      </div>
+    </div>
+  );
+}

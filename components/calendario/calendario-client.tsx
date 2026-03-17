@@ -19,8 +19,9 @@ type Evento = {
   prioridade: string;
   status?: string;
   dataProgramada?: string;
-  dataLimite?: string;
-  localAtivo?: string;
+  dataLimiteSLA?: string;
+  subsistema?: string;
+  componenteTag?: string;
   responsavelNome?: string;
 };
 

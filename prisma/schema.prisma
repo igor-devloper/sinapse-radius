@@ -1,0 +1,150 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../app/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Usuario {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  nome      String
+  email     String   @unique
+  cargo     Cargo    @default(VISUALIZADOR)
+  ativo     Boolean  @default(true)
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  ordensResponsavel OrdemServico[] @relation("Responsavel")
+  ordensAberta      OrdemServico[] @relation("AbertoPor")
+  comentarios       Comentario[]
+  historicoOS       HistoricoOS[]
+
+  @@map("usuarios")
+}
+
+// ─── Ordem de Serviço ─────────────────────────────────────────────────────────
+
+model OrdemServico {
+  id             String         @id @default(cuid())
+  numero         String         @unique // ex: OS-2024-001
+  titulo         String
+  descricao      String
+  motivoOS       String // causa raiz / motivo detalhado
+  tipoManutencao TipoManutencao
+  status         StatusOS       @default(ABERTA)
+  prioridade     PrioridadeOS   @default(MEDIA)
+
+  // SLA — Contrato Axia
+  dataEmissaoAxia DateTime // data/hora de emissão da OS pela Axia (CONTRATANTE)
+  prazoContratual Int      @default(24) // meses — conforme contrato
+  dataLimite      DateTime // calculado: dataEmissaoAxia + prazoContratual meses
+  slaVencido      Boolean  @default(false)
+
+  // Programação
+  dataProgramada DateTime? // data agendada para execução
+  dataInicio     DateTime? // início real
+  dataConclusao  DateTime? // conclusão real
+
+  // Localização / Ativo
+  localAtivo  String // ex: "Bomba #3 — Setor A"
+  tag         String? // TAG do equipamento
+  coordenadas String? // lat,lng para mapa opcional
+
+  // Relações
+  responsavelId String?
+  responsavel   Usuario? @relation("Responsavel", fields: [responsavelId], references: [id])
+  abertoPorId   String
+  abertoPor     Usuario  @relation("AbertoPor", fields: [abertoPorId], references: [id])
+
+  comentarios Comentario[]
+  historicoOS HistoricoOS[]
+  anexos      Anexo[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("ordens_servico")
+}
+
+model HistoricoOS {
+  id         String       @id @default(cuid())
+  osId       String
+  os         OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  statusDe   StatusOS?
+  statusPara StatusOS
+  observacao String?
+  usuarioId  String
+  usuario    Usuario      @relation(fields: [usuarioId], references: [id])
+  createdAt  DateTime     @default(now())
+
+  @@map("historico_os")
+}
+
+// ─── Comentários ─────────────────────────────────────────────────────────────
+
+model Comentario {
+  id        String       @id @default(cuid())
+  osId      String
+  os        OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  texto     String
+  usuarioId String
+  usuario   Usuario      @relation(fields: [usuarioId], references: [id])
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+
+  @@map("comentarios")
+}
+
+// ─── Anexos ───────────────────────────────────────────────────────────────────
+
+model Anexo {
+  id        String       @id @default(cuid())
+  osId      String
+  os        OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  nome      String
+  url       String
+  tipo      String // mime type
+  tamanho   Int // bytes
+  createdAt DateTime     @default(now())
+
+  @@map("anexos")
+}
+
+enum PrioridadeOS {
+  CRITICA
+  ALTA
+  MEDIA
+  BAIXA
+}
+
+enum TipoManutencao {
+  CORRETIVA
+  PREVENTIVA
+  PREDITIVA
+  EMERGENCIAL
+}
+
+enum Cargo {
+  ADMIN
+  SUPERVISOR
+  TECNICO
+  VISUALIZADOR
+}
+
+enum StatusOS {
+  ABERTA
+  EM_ANDAMENTO
+  AGUARDANDO_PECA
+  PAUSADA
+  CONCLUIDA
+  CANCELADA
+}

@@ -2,6 +2,13 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { Search } from "lucide-react";
 import { useCallback, useState } from "react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 export function OSFiltros() {
   const router = useRouter();
@@ -10,7 +17,7 @@ export function OSFiltros() {
 
   const atualizar = useCallback((key: string, value: string) => {
     const sp = new URLSearchParams(params.toString());
-    if (value) sp.set(key, value);
+    if (value && value !== "TODOS") sp.set(key, value);
     else sp.delete(key);
     sp.delete("page");
     router.push(`/ordens?${sp.toString()}`);
@@ -29,41 +36,56 @@ export function OSFiltros() {
           className="w-full pl-9 pr-4 py-2 text-sm border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-300 bg-white"
         />
       </div>
-      <select
-        defaultValue={params.get("status") ?? ""}
-        onChange={(e) => atualizar("status", e.target.value)}
-        className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
+
+      <Select
+        defaultValue={params.get("status") ?? "TODOS"}
+        onValueChange={(v) => atualizar("status", v)}
       >
-        <option value="">Todos os status</option>
-        <option value="ABERTA">Aberta</option>
-        <option value="EM_ANDAMENTO">Em andamento</option>
-        <option value="AGUARDANDO_PECA">Aguardando peça</option>
-        <option value="PAUSADA">Pausada</option>
-        <option value="CONCLUIDA">Concluída</option>
-        <option value="CANCELADA">Cancelada</option>
-      </select>
-      <select
-        defaultValue={params.get("prioridade") ?? ""}
-        onChange={(e) => atualizar("prioridade", e.target.value)}
-        className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
+        <SelectTrigger className="w-[180px] rounded-xl border-gray-200 text-sm">
+          <SelectValue placeholder="Todos os status" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="TODOS">Todos os status</SelectItem>
+          <SelectItem value="ABERTA">Aberta</SelectItem>
+          <SelectItem value="EM_ANDAMENTO">Em andamento</SelectItem>
+          <SelectItem value="AGUARDANDO_PECA">Aguardando peça</SelectItem>
+          <SelectItem value="PAUSADA">Pausada</SelectItem>
+          <SelectItem value="CONCLUIDA">Concluída</SelectItem>
+          <SelectItem value="CANCELADA">Cancelada</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select
+        defaultValue={params.get("prioridade") ?? "TODOS"}
+        onValueChange={(v) => atualizar("prioridade", v)}
       >
-        <option value="">Todas as prioridades</option>
-        <option value="CRITICA">Crítica</option>
-        <option value="ALTA">Alta</option>
-        <option value="MEDIA">Média</option>
-        <option value="BAIXA">Baixa</option>
-      </select>
-      <select
-        defaultValue={params.get("tipo") ?? ""}
-        onChange={(e) => atualizar("tipo", e.target.value)}
-        className="text-sm border border-gray-200 rounded-xl px-3 py-2 text-gray-700 bg-white focus:outline-none focus:ring-2 focus:ring-violet-300"
+        <SelectTrigger className="w-[180px] rounded-xl border-gray-200 text-sm">
+          <SelectValue placeholder="Todas as prioridades" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="TODOS">Todas as prioridades</SelectItem>
+          <SelectItem value="CRITICA">Crítica</SelectItem>
+          <SelectItem value="ALTA">Alta</SelectItem>
+          <SelectItem value="MEDIA">Média</SelectItem>
+          <SelectItem value="BAIXA">Baixa</SelectItem>
+        </SelectContent>
+      </Select>
+
+      <Select
+        defaultValue={params.get("tipo") ?? "TODOS"}
+        onValueChange={(v) => atualizar("tipo", v)}
       >
-        <option value="">Todos os tipos</option>
-        <option value="CORRETIVA">Corretiva</option>
-        <option value="PREVENTIVA">Preventiva</option>
-        <option value="PREDITIVA">Preditiva</option>
-        <option value="EMERGENCIAL">Emergencial</option>
-      </select>
+        <SelectTrigger className="w-[180px] rounded-xl border-gray-200 text-sm">
+          <SelectValue placeholder="Todos os tipos" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="TODOS">Todos os tipos</SelectItem>
+          <SelectItem value="CORRETIVA">Corretiva</SelectItem>
+          <SelectItem value="PREVENTIVA">Preventiva</SelectItem>
+          <SelectItem value="PREDITIVA">Preditiva</SelectItem>
+          <SelectItem value="EMERGENCIAL">Emergencial</SelectItem>
+        </SelectContent>
+      </Select>
     </div>
   );
 }

@@ -1,3 +1,4 @@
+// app/(app)/ordens/page.tsx
 import { prisma } from "@/lib/prisma";
 import { calcularSLA } from "@/lib/sla-manual";
 import Link from "next/link";
@@ -9,12 +10,12 @@ import { auth } from "@clerk/nextjs/server";
 import { ATIVIDADE_LABEL } from "@/lib/sla-manual";
 
 const statusMap: Record<string, { label: string; class: string }> = {
-  ABERTA:          { label: "Aberta",           class: "bg-orange-100 text-orange-700" },
-  EM_ANDAMENTO:    { label: "Em andamento",      class: "bg-violet-100 text-violet-700" },
-  AGUARDANDO_PECA: { label: "Aguardando peça",   class: "bg-yellow-100 text-yellow-700" },
-  PAUSADA:         { label: "Pausada",           class: "bg-gray-100 text-gray-600" },
-  CONCLUIDA:       { label: "Concluída",         class: "bg-green-100 text-green-700" },
-  CANCELADA:       { label: "Cancelada",         class: "bg-red-100 text-red-600" },
+  ABERTA:          { label: "Aberta",          class: "bg-orange-100 text-orange-700" },
+  EM_ANDAMENTO:    { label: "Em andamento",     class: "bg-violet-100 text-violet-700" },
+  AGUARDANDO_PECA: { label: "Aguardando peça",  class: "bg-yellow-100 text-yellow-700" },
+  PAUSADA:         { label: "Pausada",          class: "bg-gray-100 text-gray-600" },
+  CONCLUIDA:       { label: "Concluída",        class: "bg-green-100 text-green-700" },
+  CANCELADA:       { label: "Cancelada",        class: "bg-red-100 text-red-600" },
 };
 
 const prioridadeMap: Record<string, { label: string; dot: string }> = {
@@ -28,32 +29,38 @@ export default async function OrdensPage({
   searchParams,
 }: {
   searchParams: Promise<{
-    status?: string;
-    prioridade?: string;
-    tipo?: string;
-    q?: string;
-    page?: string;
+    status?: string; prioridade?: string; tipo?: string; q?: string; page?: string;
   }>;
 }) {
   const { userId } = await auth();
-  const usuario = await prisma.usuario.findUnique({
-    where: { clerkId: userId! },
-    select: { cargo: true },
-  });
 
-  const page = parseInt((await searchParams).page ?? "1");
+  const [usuario, tecnicos] = await Promise.all([
+    prisma.usuario.findUnique({
+      where: { clerkId: userId! },
+      select: { cargo: true },
+    }),
+    // ✅ busca técnicos aqui para passar ao modal
+    prisma.usuario.findMany({
+      where: { ativo: true, cargo: { in: ["TECNICO", "SUPERVISOR", "ADMIN"] } },
+      select: { id: true, nome: true, cargo: true },
+      orderBy: { nome: "asc" },
+    }),
+  ]);
+
+  const params = await searchParams;
+  const page = parseInt(params.page ?? "1");
   const limit = 15;
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
-  if ((await searchParams).status)    where.status = (await searchParams).status;
-  if ((await searchParams).prioridade) where.prioridade = (await searchParams).prioridade;
-  if ((await searchParams).tipo)      where.tipoAtividade = (await searchParams).tipo; // ✅ campo correto
-  if ((await searchParams).q) {
+  if (params.status)    where.status = params.status;
+  if (params.prioridade) where.prioridade = params.prioridade;
+  if (params.tipo)      where.tipoAtividade = params.tipo;
+  if (params.q) {
     where.OR = [
-      { titulo:    { contains: (await searchParams).q, mode: "insensitive" } },
-      { numero:    { contains: (await searchParams).q, mode: "insensitive" } },
-      { subsistema:{ contains: (await searchParams).q, mode: "insensitive" } }, // ✅ substituiu localAtivo
+      { titulo:    { contains: params.q, mode: "insensitive" } },
+      { numero:    { contains: params.q, mode: "insensitive" } },
+      { subsistema:{ contains: params.q, mode: "insensitive" } },
     ];
   }
 
@@ -72,9 +79,7 @@ export default async function OrdensPage({
   ]);
 
   const pages = Math.ceil(total / limit);
-  const podeAbrirOS = ["ADMIN", "SUPERVISOR", "TECNICO"].includes(
-    usuario?.cargo ?? ""
-  );
+  const podeAbrirOS = ["ADMIN", "SUPERVISOR", "TECNICO"].includes(usuario?.cargo ?? "");
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -83,7 +88,8 @@ export default async function OrdensPage({
           <h1 className="text-2xl font-semibold text-gray-900">Ordens de Serviço</h1>
           <p className="text-sm text-gray-500 mt-1">{total} OS encontradas</p>
         </div>
-        {podeAbrirOS && <NovaOSButton />}
+        {/* ✅ passa tecnicos para o botão */}
+        {podeAbrirOS && <NovaOSButton tecnicos={tecnicos} />}
       </div>
 
       <OSFiltros />
@@ -111,21 +117,13 @@ export default async function OrdensPage({
                 </tr>
               )}
               {ordens.map((os) => {
-                // ✅ nova assinatura: (dataEmissaoAxia, tipoAtividade)
                 const sla = calcularSLA(os.dataEmissaoAxia, os.tipoAtividade);
                 const status = statusMap[os.status];
                 const prioridade = prioridadeMap[os.prioridade];
-
                 return (
-                  <tr
-                    key={os.id}
-                    className="hover:bg-gray-50/70 transition-colors group"
-                  >
+                  <tr key={os.id} className="hover:bg-gray-50/70 transition-colors group">
                     <td className="px-6 py-4">
-                      <Link
-                        href={`/ordens/${os.id}`}
-                        className="font-mono text-xs text-violet-600 hover:underline"
-                      >
+                      <Link href={`/ordens/${os.id}`} className="font-mono text-xs text-violet-600 hover:underline">
                         {os.numero}
                       </Link>
                     </td>
@@ -134,18 +132,14 @@ export default async function OrdensPage({
                         <p className="text-sm font-medium text-gray-900 truncate group-hover:text-violet-700 transition-colors">
                           {os.titulo}
                         </p>
-                        {/* ✅ subsistema + componenteTag (opcionais) */}
                         <p className="text-xs text-gray-400 truncate mt-0.5">
                           {os.subsistema}
-                          {os.componenteTag && (
-                            <span className="ml-1 text-gray-300">· {os.componenteTag}</span>
-                          )}
+                          {os.componenteTag && <span className="ml-1 text-gray-300">· {os.componenteTag}</span>}
                         </p>
                       </Link>
                     </td>
                     <td className="px-4 py-4">
                       <span className="text-xs text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                        {/* ✅ usa ATIVIDADE_LABEL para label legível */}
                         {ATIVIDADE_LABEL[os.tipoAtividade] ?? os.tipoAtividade}
                       </span>
                     </td>
@@ -165,9 +159,7 @@ export default async function OrdensPage({
                     </td>
                     <td className="px-4 py-4">
                       <span className="text-xs text-gray-600">
-                        {os.responsavel?.nome.split(" ")[0] ?? (
-                          <span className="text-gray-300">—</span>
-                        )}
+                        {os.responsavel?.nome.split(" ")[0] ?? <span className="text-gray-300">—</span>}
                       </span>
                     </td>
                   </tr>
@@ -179,23 +171,15 @@ export default async function OrdensPage({
 
         {pages > 1 && (
           <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100">
-            <p className="text-xs text-gray-400">
-              Página {page} de {pages} · {total} resultados
-            </p>
+            <p className="text-xs text-gray-400">Página {page} de {pages} · {total} resultados</p>
             <div className="flex gap-2">
               {page > 1 && (
-                <Link
-                  href={`/ordens?page=${page - 1}`}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-                >
+                <Link href={`/ordens?page=${page - 1}`} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
                   Anterior
                 </Link>
               )}
               {page < pages && (
-                <Link
-                  href={`/ordens?page=${page + 1}`}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
-                >
+                <Link href={`/ordens?page=${page + 1}`} className="text-xs px-3 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50">
                   Próxima
                 </Link>
               )}
@@ -205,4 +189,4 @@ export default async function OrdensPage({
       </Card>
     </div>
   );
-}
+} 

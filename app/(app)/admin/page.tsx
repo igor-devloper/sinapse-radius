@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { TabelaUsuarios } from "@/components/admin/tabela-usuarios";
+import { GerenciarUsuarios } from "@/components/admin/gerenciar-usuarios";
 
 export default async function AdminPage() {
   const { userId } = await auth();
@@ -52,8 +53,8 @@ export default async function AdminPage() {
           </div>
         ))}
       </div>
-
-      <TabelaUsuarios usuarios={usuarios} />
+      <GerenciarUsuarios usuarios={usuarios}/>
+      {/* <TabelaUsuarios usuarios={usuarios} /> */}
     </div>
   );
 }

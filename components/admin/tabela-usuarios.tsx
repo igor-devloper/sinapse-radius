@@ -76,14 +76,16 @@ export function TabelaUsuarios({ usuarios }: { usuarios: Usuario[] }) {
                   onValueChange={(v) => atualizarCargo(u.id, v)}
                 >
                   <SelectTrigger className="text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer">
-                    <SelectValue placeholder="Selecionar cargo..." />
+                    <SelectValue className="p-2">
+                      {u.cargo ? <p> {u.cargo} </p> : <p>Selecione o cargo...</p>}
+                    </SelectValue>
                   </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem key={u.id} value={u.id} className={` ${cargoColor[u.cargo]}`}>
-                      {cargoOptions.map((c) => (
-                        <option key={c} value={c}>{c.toLowerCase()}</option>
-                      ))}
-                    </SelectItem>
+                  <SelectContent className="flex flex-col gap-2">
+                    {cargoOptions.map((c) => (
+                      <SelectItem key={u.id} value={u.id} >
+                        <p>{c.toLowerCase()}</p>
+                      </SelectItem>
+                    ))}
 
                   </SelectContent>
                 </Select>

@@ -16,7 +16,13 @@ const PRIORIDADE_LABEL: Record<string, string> = {
 
 const inp = "w-full px-3 py-2 text-sm border border-gray-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-500/20 focus:border-violet-400 transition";
 
-export function NovaOSModal({ onClose }: { onClose: () => void }) {
+interface Tecnico {
+  id: string;
+  nome: string;
+  cargo: string;
+}
+
+export function NovaOSModal({ onClose, tecnicos = [] }: { onClose: () => void; tecnicos?: Tecnico[] }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -35,18 +41,19 @@ export function NovaOSModal({ onClose }: { onClose: () => void }) {
 
     const form = new FormData(e.currentTarget);
     const body = {
-      titulo:         form.get("titulo"),
-      descricao:      form.get("descricao"),
-      motivoOS:       form.get("motivoOS"),
-      tipoAtividade:  form.get("tipoAtividade"),
-      prioridade:     form.get("prioridade"),
+      titulo:          form.get("titulo"),
+      descricao:       form.get("descricao"),
+      motivoOS:        form.get("motivoOS"),
+      tipoAtividade:   form.get("tipoAtividade"),
+      prioridade:      form.get("prioridade"),
       dataEmissaoAxia: new Date(form.get("dataEmissaoAxia") as string).toISOString(),
-      dataProgramada: form.get("dataProgramada")
+      dataProgramada:  form.get("dataProgramada")
         ? new Date(form.get("dataProgramada") as string).toISOString()
         : undefined,
       subsistema:    form.get("subsistema"),
       componenteTag: form.get("componenteTag") || undefined,
       containerId:   form.get("containerId") || undefined,
+      responsavelId: form.get("responsavelId") || undefined,
     };
 
     const res = await fetch("/api/os", {
@@ -71,7 +78,6 @@ export function NovaOSModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-50 bg-black/30 flex items-center justify-center p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-        {/* Header */}
         <div className="sticky top-0 bg-white flex items-center justify-between p-6 border-b border-gray-100">
           <div>
             <h2 className="text-lg font-semibold text-gray-900">Nova Ordem de Serviço</h2>
@@ -94,7 +100,7 @@ export function NovaOSModal({ onClose }: { onClose: () => void }) {
               placeholder="Ex: Lubrificação rolamentos bomba circulação P01" />
           </div>
 
-          {/* Tipo de atividade — define SLA */}
+          {/* Tipo de atividade */}
           <div>
             <label className="text-xs font-medium text-gray-600 mb-1.5 block">
               Tipo de atividade <span className="text-red-500">*</span>
@@ -123,7 +129,7 @@ export function NovaOSModal({ onClose }: { onClose: () => void }) {
             )}
           </div>
 
-          {/* Prioridade */}
+          {/* Prioridade + Container */}
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="text-xs font-medium text-gray-600 mb-1.5 block">
@@ -158,7 +164,24 @@ export function NovaOSModal({ onClose }: { onClose: () => void }) {
             </div>
           </div>
 
-          {/* Data emissão Axia — campo crítico do SLA */}
+          {/* ✅ Responsável */}
+          {tecnicos.length > 0 && (
+            <div>
+              <label className="text-xs font-medium text-gray-600 mb-1.5 block">
+                Técnico responsável
+              </label>
+              <select name="responsavelId" className={inp}>
+                <option value="">Sem responsável definido</option>
+                {tecnicos.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.nome} ({t.cargo.charAt(0) + t.cargo.slice(1).toLowerCase()})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Data emissão Axia */}
           <div className="bg-violet-50 border border-violet-100 rounded-xl p-4 space-y-2">
             <label className="text-xs font-semibold text-violet-700 block">
               Data e hora de emissão da OS — Axia (CONTRATANTE) <span className="text-red-500">*</span>
@@ -207,7 +230,6 @@ export function NovaOSModal({ onClose }: { onClose: () => void }) {
             <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-sm text-red-600">{erro}</div>
           )}
 
-          {/* Ações */}
           <div className="flex items-center justify-end gap-3 pt-2">
             <button type="button" onClick={onClose}
               className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 transition-colors">

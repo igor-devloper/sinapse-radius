@@ -11,6 +11,8 @@ import { ComentariosOS } from "@/components/os/comentarios";
 import { HistoricoTimeline } from "@/components/os/historico-timeline";
 import { AnexosOS } from "@/components/os/anexos-os";
 import { ChecklistPreventiva } from "@/components/os/checklist-preventiva";
+import { DownloadRelatorioButton } from "@/components/os/download-relatorio-button";
+import { EditarDatasOS } from "@/components/os/editar-datas-os";
 import Link from "next/link";
 
 const prioridadeMap: Record<string, { label: string; class: string; dot: string }> = {
@@ -20,12 +22,12 @@ const prioridadeMap: Record<string, { label: string; class: string; dot: string 
   BAIXA:   { label: "Baixa",   class: "bg-green-100 text-green-700 border-green-200",   dot: "bg-green-500" },
 };
 const statusMap: Record<string, { label: string; class: string }> = {
-  ABERTA:          { label: "Aberta",         class: "bg-orange-100 text-orange-700 border-orange-200" },
-  EM_ANDAMENTO:    { label: "Em andamento",   class: "bg-blue-100 text-blue-700 border-blue-200" },
-  AGUARDANDO_PECA: { label: "Aguard. peça",  class: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  PAUSADA:         { label: "Pausada",        class: "bg-gray-100 text-gray-600 border-gray-200" },
-  CONCLUIDA:       { label: "Concluída",      class: "bg-green-100 text-green-700 border-green-200" },
-  CANCELADA:       { label: "Cancelada",      class: "bg-red-100 text-red-600 border-red-200" },
+  ABERTA:          { label: "Aberta",        class: "bg-orange-100 text-orange-700 border-orange-200" },
+  EM_ANDAMENTO:    { label: "Em andamento",  class: "bg-blue-100 text-blue-700 border-blue-200" },
+  AGUARDANDO_PECA: { label: "Aguard. peça", class: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  PAUSADA:         { label: "Pausada",       class: "bg-gray-100 text-gray-600 border-gray-200" },
+  CONCLUIDA:       { label: "Concluída",     class: "bg-green-100 text-green-700 border-green-200" },
+  CANCELADA:       { label: "Cancelada",     class: "bg-red-100 text-red-600 border-red-200" },
 };
 
 export default async function OSDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -59,6 +61,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
   const status = statusMap[os.status];
   const canEdit = ["ADMIN","SUPERVISOR","TECNICO"].includes(usuario?.cargo ?? "");
   const isPreventiva = os.tipoAtividade === ATIVIDADE_PREVENTIVA;
+  const isConcluida = os.status === "CONCLUIDA";
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
@@ -93,8 +96,26 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
               {os.containerId && <span className="flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-gray-400" />{os.containerId}</span>}
             </div>
           </div>
-          {canEdit && <AtualizarStatusOS osId={os.id} statusAtual={os.status} />}
+
+          <div className="flex flex-col items-end gap-3 shrink-0">
+            {canEdit && <AtualizarStatusOS osId={os.id} statusAtual={os.status} />}
+            <DownloadRelatorioButton osId={os.id} numero={os.numero} status={os.status} />
+          </div>
         </div>
+
+        {/* Banner de conclusão */}
+        {isConcluida && (
+          <div className="mt-4 flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-green-800">OS Concluída</p>
+              {os.dataConclusao && (
+                <p className="text-xs text-green-600">Finalizada em {formatarDataBR(os.dataConclusao)}</p>
+              )}
+            </div>
+            <p className="ml-auto text-xs text-green-600 font-medium">Relatório PDF disponível →</p>
+          </div>
+        )}
       </div>
 
       {/* Grid */}
@@ -103,9 +124,8 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
         <div className="lg:col-span-2 space-y-5">
           <SLABadge sla={sla} showProgress />
 
-          {/* Checklist (preventiva) ou Descrição (corretiva) */}
           {isPreventiva ? (
-            <ChecklistPreventiva osId={os.id} items={os.checklistItems} canEdit={canEdit} />
+            <ChecklistPreventiva osId={os.id} items={os.checklistItems} canEdit={canEdit && !isConcluida} />
           ) : (
             <Card className="border-gray-100 shadow-sm rounded-2xl">
               <CardHeader className="pb-3">
@@ -127,12 +147,13 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
             </Card>
           )}
 
-          <AnexosOS osId={os.id} anexos={os.anexos} canUpload={canEdit} />
+          <AnexosOS osId={os.id} anexos={os.anexos} canUpload={canEdit && !isConcluida} />
           <ComentariosOS osId={os.id} comentarios={os.comentarios} />
         </div>
 
         {/* Coluna lateral */}
         <div className="space-y-4">
+          {/* Datas fixas */}
           <Card className="border-gray-100 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold text-gray-700">Datas e prazos</CardTitle>
@@ -144,13 +165,42 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                 <InfoRow icon={AlertTriangle} label="Prazo SLA atuação" value={formatarDataBR(sla.dataLimiteAtuacao)} warn />
               )}
               <Separator />
-              <InfoRow icon={Calendar}     label="Data programada" value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"} />
-              <InfoRow icon={Calendar}     label="Início real"     value={os.dataInicio ? formatarDataBR(os.dataInicio) : "—"} />
-              <InfoRow icon={CheckCircle2} label="Conclusão"       value={os.dataConclusao ? formatarDataBR(os.dataConclusao) : "—"} />
-              <InfoRow icon={Calendar}     label="Abertura"        value={formatarDataBR(os.createdAt)} />
+              <InfoRow icon={Calendar} label="Data programada"  value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"} />
+              <InfoRow icon={Calendar} label="Abertura sistema" value={formatarDataBR(os.createdAt)} />
             </CardContent>
           </Card>
 
+          {/* Início e conclusão reais — editáveis */}
+          {canEdit ? (
+            <Card className="border-gray-100 shadow-sm rounded-2xl">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-gray-700 flex items-center justify-between">
+                  Execução real
+                  <span className="text-xs text-gray-400 font-normal">clique para editar</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <EditarDatasOS
+                  osId={os.id}
+                  dataInicio={os.dataInicio}
+                  dataConclusao={os.dataConclusao}
+                  status={os.status}
+                />
+              </CardContent>
+            </Card>
+          ) : (
+            <Card className="border-gray-100 shadow-sm rounded-2xl">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm font-semibold text-gray-700">Execução real</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <InfoRow icon={Clock}         label="Início real" value={os.dataInicio ? formatarDataBR(os.dataInicio) : "—"} />
+                <InfoRow icon={CheckCircle2}  label="Conclusão"   value={os.dataConclusao ? formatarDataBR(os.dataConclusao) : "—"} highlight={!!os.dataConclusao} />
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Equipe */}
           <Card className="border-gray-100 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold text-gray-700">Equipe</CardTitle>

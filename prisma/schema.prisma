@@ -29,34 +29,17 @@ enum StatusOS {
 }
 
 enum PrioridadeOS {
-  CRITICA // falha ativa, sistema parado ou em risco
-  ALTA // degradação de performance, ação imediata
-  MEDIA // manutenção programada dentro do prazo
-  BAIXA // melhorias, ajustes não críticos
+  CRITICA
+  ALTA
+  MEDIA
+  BAIXA
 }
 
-// Atividades de manutenção mapeadas do Manual ANTSPACE HK3 V6
-// O prazo SLA é determinado pela atividade selecionada
 enum TipoAtividade {
-  // ── Manutenção preventiva / programada (prazos do manual) ──────────────────
-  LUBRIFICACAO_ROLAMENTOS // Seção 9.2.7 — a cada 2.000 h (~83 dias)
-  FILTRO_SUCCAO_ASPERSAO // Seção 9.3.1 — mensal
-  FILTRO_DUTO_FORNECIMENTO // Seção 9.3.1 — mensal
-  INSPECAO_ALETAS_TROCADOR // Seção 9.4.2 — mensal
-  MANUTENCAO_VENTILADOR_TORRE // Seção 9.4.5 — mensal
-  VERIFICACAO_QUADRO_CONTROLE // Seção 9.4.4 — mensal
-  INSPECAO_NIVEL_TANQUE_CONTAINER // Seção 9.3.5 — semanal
-  INSPECAO_NIVEL_TANQUE_TORRE // Seção 9.3.5 — diário
-  REGISTRO_TEMPERATURA_PRESSAO // Seção 9.2.2 — 2× ao dia
-  FILTRO_Y_REPOSICAO // Seção 9.3.1 — semestral
-  INSPECAO_VAZAMENTOS_TUBULACAO // Seção 9.3.2 — semestral
-  TESTE_PH_FLUIDO // Seção 9.3.6 — semestral
-  INSPECAO_ELETRICA_QCP // Seção 9.3.3 — semestral
-  DRENAGEM_TOPO_TORRE // Seção 9.4.3 — trimestral
-  SUBSTITUICAO_FLUIDO_REFRIGERANTE // Seção 9.3.4 — anual/1-2 anos
-  INSPECAO_ANUAL_GERAL // Seção 9.4.6 — anual
+  // OS de manutenção preventiva geral (usa checklist interno)
+  MANUTENCAO_PREVENTIVA_GERAL
 
-  // ── Corretiva / Emergencial (prazo definido por urgência) ──────────────────
+  // Corretivas / Emergenciais
   FALHA_ENERGIA
   FALHA_BOMBA_CIRCULACAO
   FALHA_VENTILADOR_EXAUSTAO
@@ -74,8 +57,14 @@ enum TipoAtividade {
   OUTRO
 }
 
-// ─── Usuário ─────────────────────────────────────────────────────────────────
+enum StatusChecklistItem {
+  PENDENTE
+  OK
+  NAO_APLICAVEL
+  REQUER_ATENCAO
+}
 
+// ─── Usuário ─────────────────────────────────────────────────────────────────
 model Usuario {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -96,45 +85,42 @@ model Usuario {
 }
 
 // ─── Ordem de Serviço ─────────────────────────────────────────────────────────
-
 model OrdemServico {
   id            String        @id @default(cuid())
-  numero        String        @unique // ex: OS-2024-0001
+  numero        String        @unique
   titulo        String
   descricao     String
-  motivoOS      String // causa raiz / descrição detalhada do problema
+  motivoOS      String
   tipoAtividade TipoAtividade
   status        StatusOS      @default(ABERTA)
   prioridade    PrioridadeOS  @default(MEDIA)
 
-  // ── SLA — baseado no prazo da atividade (Manual ANTSPACE HK3 V6) ──────────
-  // dataEmissaoAxia: data/hora em que a OS foi emitida pela Axia (CONTRATANTE)
-  // prazoSLAHoras: prazo em horas calculado automaticamente pelo tipo de atividade
-  // dataLimiteSLA: dataEmissaoAxia + prazoSLAHoras
-  dataEmissaoAxia DateTime // data/hora da OS emitida pela Axia
-  prazoSLAHoras   Int // calculado pela lib/sla-manual.ts conforme TipoAtividade
-  dataLimiteSLA   DateTime // deadline: dataEmissaoAxia + prazoSLAHoras
+  // SLA
+  dataEmissaoAxia DateTime
+  prazoSLAHoras   Int
+  dataLimiteSLA   DateTime
   slaVencido      Boolean  @default(false)
 
-  // ── Equipamento / Localização ─────────────────────────────────────────────
-  subsistema    String // ex: "Estação de Bombas", "Torre Seca", "QCP", "QDC"
-  componenteTag String? // TAG do componente, ex: "P01", "G04", "V202"
-  containerId   String? // identificador do container, ex: "HK3-01"
+  // Equipamento
+  subsistema    String
+  componenteTag String?
+  containerId   String?
 
-  // ── Programação ───────────────────────────────────────────────────────────
+  // Programação
   dataProgramada DateTime?
   dataInicio     DateTime?
   dataConclusao  DateTime?
 
-  // ── Relações ──────────────────────────────────────────────────────────────
+  // Relações
   responsavelId String?
-  responsavel   Usuario? @relation("Responsavel", fields: [responsavelId], references: [id])
+  responsavel   Usuario?       @relation("Responsavel", fields: [responsavelId], references: [id])
   abertoPorId   String
-  abertoPor     Usuario  @relation("AbertoPor", fields: [abertoPorId], references: [id])
+  abertoPor     Usuario        @relation("AbertoPor", fields: [abertoPorId], references: [id])
 
-  comentarios Comentario[]
-  historicoOS HistoricoOS[]
-  anexos      Anexo[]
+  comentarios    Comentario[]
+  historicoOS    HistoricoOS[]
+  anexos         Anexo[]
+  checklistItems ChecklistItemOS[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -142,8 +128,34 @@ model OrdemServico {
   @@map("ordens_servico")
 }
 
-// ─── Histórico de status ──────────────────────────────────────────────────────
+// ─── Checklist de preventiva ──────────────────────────────────────────────────
+// Gerado automaticamente ao abrir OS de tipo MANUTENCAO_PREVENTIVA_GERAL
+model ChecklistItemOS {
+  id           String              @id @default(cuid())
+  osId         String
+  os           OrdemServico        @relation(fields: [osId], references: [id], onDelete: Cascade)
 
+  // itemId referencia CHECKLIST_PREVENTIVA (lib/checklist-preventiva.ts)
+  itemId       String              // ex: "P-001"
+  descricao    String              // copiado na criação para histórico
+  periodicidade String
+  subsistema   String
+  referencia   String
+
+  status       StatusChecklistItem @default(PENDENTE)
+  observacao   String?             // campo livre para o técnico
+
+  // Auditoria
+  atualizadoPorId String?
+  atualizadoEm    DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("checklist_items_os")
+}
+
+// ─── Histórico de status ──────────────────────────────────────────────────────
 model HistoricoOS {
   id         String       @id @default(cuid())
   osId       String
@@ -159,7 +171,6 @@ model HistoricoOS {
 }
 
 // ─── Comentários ─────────────────────────────────────────────────────────────
-
 model Comentario {
   id        String       @id @default(cuid())
   osId      String
@@ -174,13 +185,12 @@ model Comentario {
 }
 
 // ─── Anexos ───────────────────────────────────────────────────────────────────
-
 model Anexo {
   id        String       @id @default(cuid())
   osId      String
   os        OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
   nome      String
-  url       String
+  url       String       // supabase://bucket/path
   tipo      String
   tamanho   Int
   createdAt DateTime     @default(now())

@@ -1,9 +1,13 @@
 import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { uploadAnexoOS, deleteAnexoOS, parseSupabaseSrc } from "@/lib/storageSupabase";
+
+const ALLOWED_TYPES = [
+  "image/jpeg","image/png","image/webp","image/gif","application/pdf",
+];
 
 // POST /api/os/[id]/anexos
-// Em produção: substitua o bloco de URL por upload real (Vercel Blob, S3, R2...)
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -25,17 +29,29 @@ export async function POST(
   if (file.size > 10 * 1024 * 1024)
     return NextResponse.json({ error: "Arquivo muito grande (máx 10 MB)" }, { status: 400 });
 
-  // ⚠️ Dev: URL placeholder. Em produção use Vercel Blob / S3 / R2:
-  //   import { put } from "@vercel/blob";
-  //   const blob = await put(`os/${osId}/${file.name}`, file, { access: "public" });
-  //   const url = blob.url;
-  const url = `/uploads/os/${osId}/${encodeURIComponent(file.name)}`;
+  if (!ALLOWED_TYPES.includes(file.type))
+    return NextResponse.json({ error: "Tipo não permitido. Use imagens ou PDF." }, { status: 400 });
 
-  const anexo = await prisma.anexo.create({
-    data: { osId, nome: file.name, url, tipo: file.type, tamanho: file.size },
+  // Upload para Supabase Storage
+  const bytes = Buffer.from(await file.arrayBuffer());
+  const { src, publicUrl } = await uploadAnexoOS({
+    osId,
+    file: bytes,
+    filename: file.name,
+    contentType: file.type,
   });
 
-  return NextResponse.json({ anexo }, { status: 201 });
+  const anexo = await prisma.anexo.create({
+    data: {
+      osId,
+      nome: file.name,
+      url: src,        // armazena o src supabase://... para referência
+      tipo: file.type,
+      tamanho: file.size,
+    },
+  });
+
+  return NextResponse.json({ anexo: { ...anexo, publicUrl } }, { status: 201 });
 }
 
 // DELETE /api/os/[id]/anexos?anexoId=xxx
@@ -53,6 +69,15 @@ export async function DELETE(
   const { searchParams } = new URL(req.url);
   const anexoId = searchParams.get("anexoId");
   if (!anexoId) return NextResponse.json({ error: "anexoId obrigatório" }, { status: 400 });
+
+  const anexo = await prisma.anexo.findUnique({ where: { id: anexoId } });
+  if (!anexo) return NextResponse.json({ error: "Anexo não encontrado" }, { status: 404 });
+
+  // Remove do Supabase Storage
+  const parsed = parseSupabaseSrc(anexo.url);
+  if (parsed) {
+    try { await deleteAnexoOS(parsed.path); } catch { /* ignora se já removido */ }
+  }
 
   await prisma.anexo.delete({ where: { id: anexoId } });
   return NextResponse.json({ ok: true });

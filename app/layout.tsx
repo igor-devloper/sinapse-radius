@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <ClerkProvider signInForceRedirectUrl='/dashboardz'>
+    <ClerkProvider signInForceRedirectUrl='/dashboard'>
       <html lang="pt-BR">
         <body className={`${inter.className} bg-white antialiased`}>
           {children}

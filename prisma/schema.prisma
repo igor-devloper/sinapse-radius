@@ -35,11 +35,26 @@ enum PrioridadeOS {
   BAIXA
 }
 
-enum TipoAtividade {
-  // OS de manutenção preventiva geral (usa checklist interno)
-  MANUTENCAO_PREVENTIVA_GERAL
+// ─── Classificação principal da OS ───────────────────────────────────────────
+enum TipoOS {
+  PREVENTIVA
+  CORRETIVA
+}
 
-  // Corretivas / Emergenciais
+// ─── Subclassificação das preventivas (define quais itens do checklist abrem) ─
+enum PeriodicidadePreventiva {
+  DIARIA          // Diário / 2× ao dia
+  SEMANAL         // Semanal
+  MENSAL          // Mensal
+  TRIMESTRAL      // Trimestral
+  SEMESTRAL       // Semestral
+  ANUAL           // Anual
+  HORAS_2000      // A cada 2.000 h
+  BIENNIAL        // A cada 1-2 anos
+}
+
+// ─── Tipos de atividade corretiva ─────────────────────────────────────────────
+enum TipoAtividadeCorretiva {
   FALHA_ENERGIA
   FALHA_BOMBA_CIRCULACAO
   FALHA_VENTILADOR_EXAUSTAO
@@ -86,30 +101,41 @@ model Usuario {
 
 // ─── Ordem de Serviço ─────────────────────────────────────────────────────────
 model OrdemServico {
-  id            String        @id @default(cuid())
-  numero        String        @unique
-  titulo        String
-  descricao     String
-  motivoOS      String
-  tipoAtividade TipoAtividade
-  status        StatusOS      @default(ABERTA)
-  prioridade    PrioridadeOS  @default(MEDIA)
+  id     String @id @default(cuid())
+  numero String @unique
+  titulo String
 
-  // SLA
-  dataEmissaoAxia DateTime
-  prazoSLAHoras   Int
-  dataLimiteSLA   DateTime
-  slaVencido      Boolean  @default(false)
+  // ── Classificação ──────────────────────────────────────────
+  tipoOS                  TipoOS
+  // Preventiva: qual periodicidade (define quais itens do checklist são gerados)
+  periodicidadePreventiva PeriodicidadePreventiva?
+  // Corretiva: qual tipo de falha/ocorrência
+  tipoAtividadeCorretiva  TipoAtividadeCorretiva?
+
+  descricao  String
+  motivoOS   String
+  status     StatusOS     @default(ABERTA)
+  prioridade PrioridadeOS @default(MEDIA)
+
+  // ── SLA — SOMENTE CORRETIVAS ───────────────────────────────
+  // Para preventivas esses campos ficam null
+  dataEmissaoAxia DateTime?
+  prazoSLAHoras   Int?
+  dataLimiteSLA   DateTime?
+  slaVencido      Boolean   @default(false)
+
+  // ── Data de referência do cronograma preventivo ────────────
+  // Usada pelo calendário para posicionar no mês correto
+  dataProgramada DateTime?
 
   // Equipamento
   subsistema    String
   componenteTag String?
   containerId   String?
 
-  // Programação
-  dataProgramada DateTime?
-  dataInicio     DateTime?
-  dataConclusao  DateTime?
+  // Execução
+  dataInicio    DateTime?
+  dataConclusao DateTime?
 
   // Relações
   responsavelId String?
@@ -129,21 +155,22 @@ model OrdemServico {
 }
 
 // ─── Checklist de preventiva ──────────────────────────────────────────────────
-// Gerado automaticamente ao abrir OS de tipo MANUTENCAO_PREVENTIVA_GERAL
+// Gerado automaticamente ao abrir OS de tipo PREVENTIVA.
+// Apenas os itens cuja periodicidade bate com a da OS são inseridos.
 model ChecklistItemOS {
-  id           String              @id @default(cuid())
-  osId         String
-  os           OrdemServico        @relation(fields: [osId], references: [id], onDelete: Cascade)
+  id    String       @id @default(cuid())
+  osId  String
+  os    OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
 
   // itemId referencia CHECKLIST_PREVENTIVA (lib/checklist-preventiva.ts)
-  itemId       String              // ex: "P-001"
-  descricao    String              // copiado na criação para histórico
+  itemId        String              // ex: "P-001"
+  descricao     String              // copiado na criação para histórico
   periodicidade String
-  subsistema   String
-  referencia   String
+  subsistema    String
+  referencia    String
 
-  status       StatusChecklistItem @default(PENDENTE)
-  observacao   String?             // campo livre para o técnico
+  status     StatusChecklistItem @default(PENDENTE)
+  observacao String?             // campo livre para o técnico
 
   // Auditoria
   atualizadoPorId String?

@@ -71,9 +71,10 @@ export function OSFiltros() {
         </SelectContent>
       </Select>
 
+      {/* ✅ Filtro por tipoOS — apenas CORRETIVA e PREVENTIVA conforme schema */}
       <Select
-        defaultValue={params.get("tipo") ?? "TODOS"}
-        onValueChange={(v) => atualizar("tipo", v)}
+        defaultValue={params.get("tipoOS") ?? "TODOS"}
+        onValueChange={(v) => atualizar("tipoOS", v)}
       >
         <SelectTrigger className="w-[180px] rounded-xl border-gray-200 text-sm">
           <SelectValue placeholder="Todos os tipos" />
@@ -82,8 +83,6 @@ export function OSFiltros() {
           <SelectItem value="TODOS">Todos os tipos</SelectItem>
           <SelectItem value="CORRETIVA">Corretiva</SelectItem>
           <SelectItem value="PREVENTIVA">Preventiva</SelectItem>
-          <SelectItem value="PREDITIVA">Preditiva</SelectItem>
-          <SelectItem value="EMERGENCIAL">Emergencial</SelectItem>
         </SelectContent>
       </Select>
     </div>

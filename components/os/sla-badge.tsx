@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  SLAInfo, ATIVIDADE_LABEL, prazoFormatado, formatarDataBR,
+  SLAInfo, ATIVIDADE_CORRETIVA_LABEL, prazoFormatado, formatarDataBR,
 } from "@/lib/sla-manual";
 import { ShieldAlert, ShieldCheck, ShieldEllipsis, BookOpen, Zap } from "lucide-react";
 
@@ -89,7 +89,7 @@ export function SLABadge({ sla, compact = false, showProgress = false }: SLABadg
             {" · "}{sla.referenciaManual}
           </p>
           <p className="text-xs text-gray-500 mt-0.5">
-            {ATIVIDADE_LABEL[sla.tipoAtividade] ?? sla.tipoAtividade}
+            {ATIVIDADE_CORRETIVA_LABEL[sla.tipoAtividadeCorretiva] ?? sla.tipoAtividadeCorretiva}
           </p>
         </div>
       </div>

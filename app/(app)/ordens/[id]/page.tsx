@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
-import { calcularSLA, formatarDataBR, formatarDataCurta, ATIVIDADE_LABEL, ATIVIDADE_PREVENTIVA } from "@/lib/sla-manual";
+import { calcularSLA, formatarDataBR, formatarDataCurta, ATIVIDADE_CORRETIVA_LABEL } from "@/lib/sla-manual";
 import { SLABadge } from "@/components/os/sla-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
@@ -30,6 +30,12 @@ const statusMap: Record<string, { label: string; class: string }> = {
   CANCELADA:       { label: "Cancelada",     class: "bg-red-100 text-red-600 border-red-200" },
 };
 
+// ✅ Label para o tipoOS (campo correto do schema)
+const TIPO_OS_LABEL: Record<string, string> = {
+  PREVENTIVA: "Preventiva",
+  CORRETIVA: "Corretiva",
+};
+
 export default async function OSDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { userId } = await auth();
   const usuario = await prisma.usuario.findUnique({
@@ -56,11 +62,17 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
 
   if (!os) notFound();
 
-  const sla = calcularSLA(os.dataEmissaoAxia, os.tipoAtividade);
+  // ✅ SLA apenas para corretivas com dados completos
+  const sla =
+    os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
+      ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
+      : null;
+
   const prioridade = prioridadeMap[os.prioridade];
   const status = statusMap[os.status];
   const canEdit = ["ADMIN","SUPERVISOR","TECNICO"].includes(usuario?.cargo ?? "");
-  const isPreventiva = os.tipoAtividade === ATIVIDADE_PREVENTIVA;
+  // ✅ Corrigido: usa tipoOS para verificar se é preventiva
+  const isPreventiva = os.tipoOS === "PREVENTIVA";
   const isConcluida = os.status === "CONCLUIDA";
 
   return (
@@ -85,8 +97,9 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                 <span className={`w-1.5 h-1.5 rounded-full ${prioridade.dot}`} />
                 {prioridade.label}
               </span>
+              {/* ✅ Usa tipoOS corretamente */}
               <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${isPreventiva ? "bg-purple-50 text-purple-700 border-purple-100" : "bg-orange-50 text-orange-700 border-orange-100"}`}>
-                {ATIVIDADE_LABEL[os.tipoAtividade] ?? os.tipoAtividade}
+                {TIPO_OS_LABEL[os.tipoOS] ?? os.tipoOS}
               </span>
             </div>
             <h1 className="text-2xl font-bold text-gray-900 leading-tight">{os.titulo}</h1>
@@ -122,8 +135,10 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Coluna principal */}
         <div className="lg:col-span-2 space-y-5">
-          <SLABadge sla={sla} showProgress />
+          {/* ✅ SLA só aparece para corretivas */}
+          {sla && <SLABadge sla={sla} showProgress />}
 
+          {/* ✅ Checklist para preventivas, descrição para corretivas */}
           {isPreventiva ? (
             <ChecklistPreventiva osId={os.id} items={os.checklistItems} canEdit={canEdit && !isConcluida} />
           ) : (
@@ -143,6 +158,17 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                   <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Motivo / Causa raiz</p>
                   <p className="text-sm text-gray-700 leading-relaxed">{os.motivoOS}</p>
                 </div>
+                {os.tipoAtividadeCorretiva && (
+                  <>
+                    <Separator />
+                    <div>
+                      <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Tipo de ocorrência</p>
+                      <p className="text-sm text-gray-700">
+                        {ATIVIDADE_CORRETIVA_LABEL[os.tipoAtividadeCorretiva] ?? os.tipoAtividadeCorretiva}
+                      </p>
+                    </div>
+                  </>
+                )}
               </CardContent>
             </Card>
           )}
@@ -153,19 +179,27 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
 
         {/* Coluna lateral */}
         <div className="space-y-4">
-          {/* Datas fixas */}
+          {/* Datas */}
           <Card className="border-gray-100 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-semibold text-gray-700">Datas e prazos</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              <InfoRow icon={Clock}         label="Emissão OS Axia"     value={formatarDataBR(os.dataEmissaoAxia)} highlight />
-              <InfoRow icon={AlertTriangle} label="Prazo SLA resolução" value={formatarDataBR(sla.dataLimiteSLA)} danger />
-              {sla.dataLimiteAtuacao && (
-                <InfoRow icon={AlertTriangle} label="Prazo SLA atuação" value={formatarDataBR(sla.dataLimiteAtuacao)} warn />
+              {os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && (
+                <>
+                  <InfoRow icon={Clock} label="Emissão OS Axia" value={formatarDataBR(os.dataEmissaoAxia)} highlight />
+                  {sla && (
+                    <>
+                      <InfoRow icon={AlertTriangle} label="Prazo SLA resolução" value={formatarDataBR(sla.dataLimiteSLA)} danger />
+                      {sla.dataLimiteAtuacao && (
+                        <InfoRow icon={AlertTriangle} label="Prazo SLA atuação" value={formatarDataBR(sla.dataLimiteAtuacao)} warn />
+                      )}
+                    </>
+                  )}
+                  <Separator />
+                </>
               )}
-              <Separator />
-              <InfoRow icon={Calendar} label="Data programada"  value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"} />
+              <InfoRow icon={Calendar} label="Data programada" value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"} />
               <InfoRow icon={Calendar} label="Abertura sistema" value={formatarDataBR(os.createdAt)} />
             </CardContent>
           </Card>
@@ -194,8 +228,8 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                 <CardTitle className="text-sm font-semibold text-gray-700">Execução real</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <InfoRow icon={Clock}         label="Início real" value={os.dataInicio ? formatarDataBR(os.dataInicio) : "—"} />
-                <InfoRow icon={CheckCircle2}  label="Conclusão"   value={os.dataConclusao ? formatarDataBR(os.dataConclusao) : "—"} highlight={!!os.dataConclusao} />
+                <InfoRow icon={Clock}        label="Início real" value={os.dataInicio ? formatarDataBR(os.dataInicio) : "—"} />
+                <InfoRow icon={CheckCircle2} label="Conclusão"   value={os.dataConclusao ? formatarDataBR(os.dataConclusao) : "—"} highlight={!!os.dataConclusao} />
               </CardContent>
             </Card>
           )}

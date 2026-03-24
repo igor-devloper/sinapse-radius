@@ -12,10 +12,10 @@ export default async function Header({ usuario }: { usuario: Usuario }) {
   // OS ativas com SLA em estado crítico (≥ 90% do prazo decorrido ou vencido)
   const osAtivas = await prisma.ordemServico.findMany({
     where: { status: { notIn: ["CONCLUIDA", "CANCELADA"] } },
-    select: { id: true, dataEmissaoAxia: true, tipoAtividade: true },
+    select: { id: true, dataEmissaoAxia: true, tipoOS: true },
   });
   const alertas = osAtivas.filter((os) => {
-    const sla = calcularSLA(os.dataEmissaoAxia, os.tipoAtividade);
+    const sla = calcularSLA(os.dataEmissaoAxia ?? new Date(), os.tipoOS);
     return sla.vencido || sla.statusColor === "red" || sla.statusColor === "orange";
   }).length;
 

@@ -25,14 +25,13 @@ export async function GET(
         include: { usuario: { select: { nome: true } } },
         orderBy: { createdAt: "asc" },
       },
-      anexos:        { orderBy: { createdAt: "asc" } },
+      anexos:         { orderBy: { createdAt: "asc" } },
       checklistItems: { orderBy: [{ subsistema: "asc" }, { itemId: "asc" }] },
     },
   });
 
   if (!os) return NextResponse.json({ error: "OS não encontrada" }, { status: 404 });
 
-  // Só gera relatório se concluída
   if (os.status !== "CONCLUIDA") {
     return NextResponse.json(
       { error: "Relatório disponível apenas para OS com status CONCLUIDA" },
@@ -40,7 +39,19 @@ export async function GET(
     );
   }
 
-  const sla = calcularSLA(os.dataEmissaoAxia, os.tipoAtividade);
+  // ── SLA apenas para corretivas com dados suficientes ──────────────────
+  const isCorretiva = os.tipoOS === "CORRETIVA";
+  const sla =
+    isCorretiva && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
+      ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
+      : null;
+
+  // ── "tipoAtividade" que o gerador de PDF espera ───────────────────────
+  // O PDF usa esse campo para exibir label e definir "PREVENTIVA" vs "CORRETIVA"
+  const tipoAtividadeParaPDF =
+    os.tipoOS === "PREVENTIVA"
+      ? "MANUTENCAO_PREVENTIVA_GERAL"
+      : (os.tipoAtividadeCorretiva ?? "OUTRO");
 
   const payload = {
     id: os.id,
@@ -48,67 +59,86 @@ export async function GET(
     titulo: os.titulo,
     descricao: os.descricao,
     motivoOS: os.motivoOS,
-    tipoAtividade: os.tipoAtividade,
+    tipoAtividade: tipoAtividadeParaPDF,
     status: os.status,
     prioridade: os.prioridade,
     subsistema: os.subsistema,
     componenteTag: os.componenteTag,
     containerId: os.containerId,
-    // SLA
-    dataEmissaoAxia: os.dataEmissaoAxia.toISOString(),
-    dataLimiteSLA: os.dataLimiteSLA.toISOString(),
-    prazoSLAHoras: os.prazoSLAHoras,
-    slaVencido: os.slaVencido,
-    sla: {
-      statusLabel: sla.statusLabel,
-      statusColor: sla.statusColor,
-      tempoFormatado: sla.tempoFormatado,
-      percentualDecorrido: sla.percentualDecorrido,
-      referenciaManual: sla.referenciaManual,
-      isCorretiva: sla.isCorretiva,
-      atuacaoHoras: sla.atuacaoHoras,
-      dataLimiteAtuacao: sla.dataLimiteAtuacao?.toISOString() ?? null,
-    },
-    // Datas
+
+    // ── SLA (nullable para preventivas) ───────────────────────────────
+    dataEmissaoAxia: os.dataEmissaoAxia?.toISOString() ?? "",
+    dataLimiteSLA:   os.dataLimiteSLA?.toISOString()   ?? "",
+    prazoSLAHoras:   os.prazoSLAHoras  ?? 0,
+    slaVencido:      os.slaVencido,
+
+    sla: sla
+      ? {
+          statusLabel:         sla.statusLabel,
+          statusColor:         sla.statusColor,
+          tempoFormatado:      sla.tempoFormatado,
+          percentualDecorrido: sla.percentualDecorrido,
+          referenciaManual:    sla.referenciaManual,
+          isCorretiva:         true,
+          atuacaoHoras:        sla.atuacaoHoras        ?? null,
+          dataLimiteAtuacao:   sla.dataLimiteAtuacao?.toISOString() ?? null,
+        }
+      : {
+          statusLabel:         "N/A",
+          statusColor:         "green" as const,
+          tempoFormatado:      "—",
+          percentualDecorrido: 0,
+          referenciaManual:    "—",
+          isCorretiva:         false,
+          atuacaoHoras:        null,
+          dataLimiteAtuacao:   null,
+        },
+
+    // ── Datas ──────────────────────────────────────────────────────────
     dataProgramada: os.dataProgramada?.toISOString() ?? null,
-    dataInicio: os.dataInicio?.toISOString() ?? null,
-    dataConclusao: os.dataConclusao?.toISOString() ?? null,
-    createdAt: os.createdAt.toISOString(),
-    // Equipe
+    dataInicio:     os.dataInicio?.toISOString()     ?? null,
+    dataConclusao:  os.dataConclusao?.toISOString()  ?? null,
+    createdAt:      os.createdAt.toISOString(),
+
+    // ── Equipe ─────────────────────────────────────────────────────────
     responsavel: os.responsavel,
-    abertoPor: os.abertoPor,
-    // Checklist
+    abertoPor:   os.abertoPor,
+
+    // ── Checklist ──────────────────────────────────────────────────────
     checklistItems: os.checklistItems.map((item) => ({
-      id: item.id,
-      itemId: item.itemId,
-      descricao: item.descricao,
+      id:           item.id,
+      itemId:       item.itemId,
+      descricao:    item.descricao,
       periodicidade: item.periodicidade,
-      subsistema: item.subsistema,
-      referencia: item.referencia,
-      status: item.status,
-      observacao: item.observacao,
+      subsistema:   item.subsistema,
+      referencia:   item.referencia,
+      status:       item.status,
+      observacao:   item.observacao,
       atualizadoEm: item.atualizadoEm?.toISOString() ?? null,
     })),
-    // Comentários
+
+    // ── Comentários ────────────────────────────────────────────────────
     comentarios: os.comentarios.map((c) => ({
-      texto: c.texto,
-      usuario: c.usuario.nome,
+      texto:     c.texto,
+      usuario:   c.usuario.nome,
       createdAt: c.createdAt.toISOString(),
     })),
-    // Histórico
+
+    // ── Histórico ──────────────────────────────────────────────────────
     historico: os.historicoOS.map((h) => ({
-      statusDe: h.statusDe,
+      statusDe:   h.statusDe,
       statusPara: h.statusPara,
       observacao: h.observacao,
-      usuario: h.usuario.nome,
-      createdAt: h.createdAt.toISOString(),
+      usuario:    h.usuario.nome,
+      createdAt:  h.createdAt.toISOString(),
     })),
-    // Anexos — URLs serão resolvidas no client via /api/files/anexo
+
+    // ── Anexos ─────────────────────────────────────────────────────────
     anexos: os.anexos.map((a) => ({
-      id: a.id,
-      nome: a.nome,
-      url: a.url,
-      tipo: a.tipo,
+      id:      a.id,
+      nome:    a.nome,
+      url:     a.url,
+      tipo:    a.tipo,
       tamanho: a.tamanho,
     })),
   };

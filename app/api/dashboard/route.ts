@@ -30,27 +30,36 @@ export async function GET() {
     prisma.ordemServico.count({ where: { status: "CANCELADA" } }),
     prisma.ordemServico.count({ where: { prioridade: "CRITICA", status: { notIn: ["CONCLUIDA", "CANCELADA"] } } }),
     prisma.ordemServico.count({ where: { createdAt: { gte: ha30dias } } }),
-    // OS que vencem nos próximos 30 dias
+    // OS corretivas que vencem nos próximos 30 dias
     prisma.ordemServico.count({
       where: {
+        tipoOS: "CORRETIVA",
         dataLimiteSLA: { gte: agora, lte: subDays(agora, -30) },
         status: { notIn: ["CONCLUIDA", "CANCELADA"] },
       },
     }),
-    // Para calcular quantas estão com SLA vencido
+    // Para calcular quantas estão com SLA vencido (apenas corretivas)
     prisma.ordemServico.findMany({
-      where: { status: { notIn: ["CONCLUIDA", "CANCELADA"] } },
-      select: { id: true, dataEmissaoAxia: true, tipoAtividade: true },
+      where: {
+        tipoOS: "CORRETIVA",
+        status: { notIn: ["CONCLUIDA", "CANCELADA"] },
+        dataEmissaoAxia: { not: null },
+        tipoAtividadeCorretiva: { not: null },
+      },
+      select: { id: true, dataEmissaoAxia: true, tipoAtividadeCorretiva: true },
     }),
   ]);
 
   const osSLAVencido = todasOSComData.filter(
-    (os) => calcularSLA(os.dataEmissaoAxia, os.tipoAtividade).vencido
+    (os) =>
+      os.dataEmissaoAxia &&
+      os.tipoAtividadeCorretiva &&
+      calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva).vencido
   ).length;
 
-  // OS por tipo de atividade
+  // OS por tipoOS
   const porTipo = await prisma.ordemServico.groupBy({
-    by: ["tipoAtividade"],
+    by: ["tipoOS"],
     _count: { id: true },
   });
 
@@ -97,7 +106,19 @@ export async function GET() {
     },
     porTipo,
     porStatus,
-    ultimasOS: ultimasOS.map((os) => ({ ...os, sla: calcularSLA(os.dataEmissaoAxia, os.tipoAtividade) })),
-    osProximas: osProximas.map((os) => ({ ...os, sla: calcularSLA(os.dataEmissaoAxia, os.tipoAtividade) })),
+    ultimasOS: ultimasOS.map((os) => ({
+      ...os,
+      sla:
+        os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
+          ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
+          : null,
+    })),
+    osProximas: osProximas.map((os) => ({
+      ...os,
+      sla:
+        os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
+          ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
+          : null,
+    })),
   });
 }

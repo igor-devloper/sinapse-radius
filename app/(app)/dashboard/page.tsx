@@ -3,10 +3,9 @@ import { prisma } from "@/lib/prisma";
 import { calcularSLA, formatarDataCurta } from "@/lib/sla-manual";
 import { subDays } from "date-fns";
 import {
-  ClipboardList, AlertTriangle, CheckCircle2, Clock,
+  ClipboardList, CheckCircle2, Clock,
   TrendingUp, Zap, CalendarClock, ShieldAlert
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { SLABadge } from "@/components/os/sla-badge";
@@ -27,7 +26,7 @@ export default async function DashboardPage() {
     osCriticas,
     osUltimos30dias,
     osProximas7dias,
-    todasAtivas,
+    todasCorretivas,
   ] = await Promise.all([
     prisma.ordemServico.count(),
     prisma.ordemServico.count({ where: { status: "ABERTA" } }),
@@ -36,13 +35,24 @@ export default async function DashboardPage() {
     prisma.ordemServico.count({ where: { prioridade: "CRITICA", status: { notIn: ["CONCLUIDA", "CANCELADA"] } } }),
     prisma.ordemServico.count({ where: { createdAt: { gte: ha30dias } } }),
     prisma.ordemServico.count({ where: { dataProgramada: { gte: agora, lte: em7dias }, status: { notIn: ["CONCLUIDA", "CANCELADA"] } } }),
+    // SLA vencido — SOMENTE corretivas com dataEmissaoAxia e tipoAtividadeCorretiva
     prisma.ordemServico.findMany({
-      where: { status: { notIn: ["CONCLUIDA", "CANCELADA"] } },
-      select: { id: true, dataEmissaoAxia: true, tipoAtividade: true },
+      where: {
+        tipoOS: "CORRETIVA",
+        status: { notIn: ["CONCLUIDA", "CANCELADA"] },
+        dataEmissaoAxia: { not: null },
+        tipoAtividadeCorretiva: { not: null },
+      },
+      select: { id: true, dataEmissaoAxia: true, tipoAtividadeCorretiva: true },
     }),
   ]);
 
-  const osSLAVencido = todasAtivas.filter((os) => calcularSLA(os.dataEmissaoAxia, os.tipoAtividade).vencido).length;
+  const osSLAVencido = todasCorretivas.filter(
+    (os) =>
+      os.dataEmissaoAxia &&
+      os.tipoAtividadeCorretiva &&
+      calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva).vencido
+  ).length;
 
   // Últimas OS abertas
   const ultimasOS = await prisma.ordemServico.findMany({
@@ -113,7 +123,10 @@ export default async function DashboardPage() {
             <CardContent className="p-0">
               <div className="divide-y divide-gray-50">
                 {ultimasOS.map((os) => {
-                  const sla = calcularSLA(os.dataEmissaoAxia, os.tipoAtividade);
+                  const sla =
+                    os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
+                      ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
+                      : null;
                   return (
                     <Link
                       key={os.id}
@@ -125,7 +138,7 @@ export default async function DashboardPage() {
                         <span className="text-xs text-gray-400">{os.numero} · {os.subsistema}{os.componenteTag ? ` · ${os.componenteTag}` : ""}</span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-4">
-                        <SLABadge sla={sla} compact />
+                        {sla && <SLABadge sla={sla} compact />}
                         <StatusBadge status={os.status} />
                       </div>
                     </Link>

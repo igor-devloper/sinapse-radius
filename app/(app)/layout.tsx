@@ -1,9 +1,11 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import Sidebar from "@/components/layout/sidebar";
-import Header from "@/components/layout/header";
 import { Cargo } from "../generated/prisma/enums";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { AppSidebar } from "@/components/app-sidebar";
+import AppHeader from "@/components/app-header";
+
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const clerkUser = await currentUser();
@@ -16,7 +18,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   if (!usuario) {
     const cargo = clerkUser.publicMetadata?.cargo as Cargo | undefined;
-
     if (!cargo || !Object.values(Cargo).includes(cargo)) redirect("/sem-acesso");
 
     usuario = await prisma.usuario.create({
@@ -35,14 +36,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   if (!usuario.ativo) redirect("/sem-acesso");
 
   return (
-    <div className="flex h-screen bg-gray-50 overflow-hidden">
-      <Sidebar cargo={usuario.cargo} />
-      <div className="flex flex-col flex-1 overflow-hidden">
-        <Header usuario={usuario} />
-        <main className="flex-1 overflow-y-auto p-6">
+    <SidebarProvider>
+      <AppSidebar cargo={usuario.cargo} nome={usuario.nome} />
+      <SidebarInset>
+        <AppHeader usuario={usuario} />
+        <main className="flex-1 overflow-y-auto p-4 md:p-6">
           {children}
         </main>
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

@@ -28,14 +28,15 @@ export async function PATCH(
 
   const { itemId, status, observacao } = parsed.data;
 
-  const item = await prisma.checklistItemOS.update({
+  const item = await (prisma as any).checklistItemOS.update({
     where: { id: itemId },
     data: {
       status,
       observacao: observacao ?? undefined,
       atualizadoPorId: usuario.id,
-      atualizadoEm:    new Date(),
+      atualizadoEm: new Date(),
     },
+    include: { asset: { select: { nome: true, codigo: true, fotoUrl: true } } },
   });
 
   return NextResponse.json({ item });

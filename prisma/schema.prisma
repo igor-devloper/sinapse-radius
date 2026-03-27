@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../app/generated/prisma"
@@ -35,25 +33,22 @@ enum PrioridadeOS {
   BAIXA
 }
 
-// ─── Classificação principal da OS ───────────────────────────────────────────
 enum TipoOS {
   PREVENTIVA
   CORRETIVA
 }
 
-// ─── Subclassificação das preventivas (define quais itens do checklist abrem) ─
 enum PeriodicidadePreventiva {
-  DIARIA          // Diário / 2× ao dia
-  SEMANAL         // Semanal
-  MENSAL          // Mensal
-  TRIMESTRAL      // Trimestral
-  SEMESTRAL       // Semestral
-  ANUAL           // Anual
-  HORAS_2000      // A cada 2.000 h
-  BIENNIAL        // A cada 1-2 anos
+  DIARIA
+  SEMANAL
+  MENSAL
+  TRIMESTRAL
+  SEMESTRAL
+  ANUAL
+  HORAS_2000
+  BIENNIAL
 }
 
-// ─── Tipos de atividade corretiva ─────────────────────────────────────────────
 enum TipoAtividadeCorretiva {
   FALHA_ENERGIA
   FALHA_BOMBA_CIRCULACAO
@@ -79,7 +74,6 @@ enum StatusChecklistItem {
   REQUER_ATENCAO
 }
 
-// ─── Usuário ─────────────────────────────────────────────────────────────────
 model Usuario {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -99,49 +93,40 @@ model Usuario {
   @@map("usuarios")
 }
 
-// ─── Ordem de Serviço ─────────────────────────────────────────────────────────
 model OrdemServico {
   id     String @id @default(cuid())
   numero String @unique
   titulo String
 
-  // ── Classificação ──────────────────────────────────────────
-  tipoOS                  TipoOS
-  // Preventiva: qual periodicidade (define quais itens do checklist são gerados)
-  periodicidadePreventiva PeriodicidadePreventiva?
-  // Corretiva: qual tipo de falha/ocorrência
-  tipoAtividadeCorretiva  TipoAtividadeCorretiva?
+  tipoOS                     TipoOS
+  periodicidadesSelecionadas String[]                @default([])
+  periodicidadePreventiva    PeriodicidadePreventiva?
+  tipoAtividadeCorretiva     TipoAtividadeCorretiva?
 
   descricao  String
   motivoOS   String
   status     StatusOS     @default(ABERTA)
   prioridade PrioridadeOS @default(MEDIA)
 
-  // ── SLA — SOMENTE CORRETIVAS ───────────────────────────────
-  // Para preventivas esses campos ficam null
   dataEmissaoAxia DateTime?
   prazoSLAHoras   Int?
   dataLimiteSLA   DateTime?
   slaVencido      Boolean   @default(false)
 
-  // ── Data de referência do cronograma preventivo ────────────
-  // Usada pelo calendário para posicionar no mês correto
-  dataProgramada DateTime?
+  dataProgramada    DateTime?
+  dataFimProgramada DateTime?
 
-  // Equipamento
   subsistema    String
   componenteTag String?
   containerId   String?
 
-  // Execução
   dataInicio    DateTime?
   dataConclusao DateTime?
 
-  // Relações
   responsavelId String?
-  responsavel   Usuario?       @relation("Responsavel", fields: [responsavelId], references: [id])
+  responsavel   Usuario?        @relation("Responsavel", fields: [responsavelId], references: [id])
   abertoPorId   String
-  abertoPor     Usuario        @relation("AbertoPor", fields: [abertoPorId], references: [id])
+  abertoPor     Usuario         @relation("AbertoPor", fields: [abertoPorId], references: [id])
 
   comentarios    Comentario[]
   historicoOS    HistoricoOS[]
@@ -154,35 +139,61 @@ model OrdemServico {
   @@map("ordens_servico")
 }
 
-// ─── Checklist de preventiva ──────────────────────────────────────────────────
-// Gerado automaticamente ao abrir OS de tipo PREVENTIVA.
-// Apenas os itens cuja periodicidade bate com a da OS são inseridos.
+model Asset {
+  id        String   @id @default(cuid())
+  nome      String
+  codigo    String
+  fotoUrl   String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  checklistItems         ChecklistItemOS[]
+  checklistTemplateLinks AssetChecklistTemplate[]
+
+  @@map("assets")
+}
+
+model AssetChecklistTemplate {
+  id              String   @id @default(cuid())
+  assetId         String
+  checklistItemId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  asset Asset @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  @@unique([assetId, checklistItemId])
+  @@index([checklistItemId])
+  @@map("asset_checklist_templates")
+}
+
 model ChecklistItemOS {
   id    String       @id @default(cuid())
   osId  String
   os    OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
 
-  // itemId referencia CHECKLIST_PREVENTIVA (lib/checklist-preventiva.ts)
-  itemId        String              // ex: "P-001"
-  descricao     String              // copiado na criação para histórico
+  itemId        String
+  descricao     String
   periodicidade String
   subsistema    String
   referencia    String
 
-  status     StatusChecklistItem @default(PENDENTE)
-  observacao String?             // campo livre para o técnico
+  assetId String?
+  asset   Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
 
-  // Auditoria
+  status     StatusChecklistItem @default(PENDENTE)
+  observacao String?
+
   atualizadoPorId String?
   atualizadoEm    DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  @@index([assetId])
   @@map("checklist_items_os")
 }
 
-// ─── Histórico de status ──────────────────────────────────────────────────────
 model HistoricoOS {
   id         String       @id @default(cuid())
   osId       String
@@ -197,7 +208,6 @@ model HistoricoOS {
   @@map("historico_os")
 }
 
-// ─── Comentários ─────────────────────────────────────────────────────────────
 model Comentario {
   id        String       @id @default(cuid())
   osId      String
@@ -211,13 +221,12 @@ model Comentario {
   @@map("comentarios")
 }
 
-// ─── Anexos ───────────────────────────────────────────────────────────────────
 model Anexo {
   id        String       @id @default(cuid())
   osId      String
   os        OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
   nome      String
-  url       String       // supabase://bucket/path
+  url       String
   tipo      String
   tamanho   Int
   createdAt DateTime     @default(now())

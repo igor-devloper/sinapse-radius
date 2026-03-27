@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calcularProximaData } from "@/lib/preventiva-utils";
-import { itensPorPeriodicidade } from "@/lib/checklist-preventiva";
+import { itensPorMultiplasPeriodicidades } from "@/lib/checklist-preventiva";
+import { gerarNumeroOS } from "@/lib/sla-manual";
 
 export async function POST(req: Request) {
   try {
@@ -15,90 +16,106 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "OS não encontrada" }, { status: 404 });
     }
 
-    // ✅ só preventiva
     if (osAtual.tipoOS !== "PREVENTIVA") {
-      return NextResponse.json(
-        { error: "A OS precisa ser preventiva" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "A OS precisa ser preventiva" }, { status: 400 });
     }
 
-    // ✅ só concluída
     if (osAtual.status !== "CONCLUIDA") {
-      return NextResponse.json(
-        { error: "A OS precisa estar concluída" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "A OS precisa estar concluída" }, { status: 400 });
     }
 
-    if (!osAtual.periodicidadePreventiva || !osAtual.dataProgramada) {
-      return NextResponse.json(
-        { error: "OS sem periodicidade ou data programada" },
-        { status: 400 }
-      );
+    if (!osAtual.dataProgramada) {
+      return NextResponse.json({ error: "OS sem data programada" }, { status: 400 });
     }
 
-    // 🔥 calcula próxima data corretamente
+    // Resolve periodicidades: novo modelo ou legado
+    const periodicidades: string[] =
+      (osAtual.periodicidadesSelecionadas && osAtual.periodicidadesSelecionadas.length > 0)
+        ? osAtual.periodicidadesSelecionadas
+        : osAtual.periodicidadePreventiva
+          ? [osAtual.periodicidadePreventiva]
+          : [];
+
+    if (periodicidades.length === 0) {
+      return NextResponse.json({ error: "OS sem periodicidade definida" }, { status: 400 });
+    }
+
+    // Calcula próxima data baseada na periodicidade principal (a de menor frequência)
+    const periodicidadePrincipal = periodicidades[0];
     const proximaData = calcularProximaData(
       new Date(osAtual.dataProgramada),
-      osAtual.periodicidadePreventiva
+      periodicidadePrincipal as never
     );
 
     if (!proximaData) {
-      return NextResponse.json(
-        { error: "Periodicidade não suportada" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Periodicidade não suportada" }, { status: 400 });
     }
 
-    // 🔥 evita duplicar (por container + periodicidade + data)
+    // Evita duplicata (por container + periodicidades + data)
     const jaExiste = await prisma.ordemServico.findFirst({
       where: {
         tipoOS: "PREVENTIVA",
         containerId: osAtual.containerId,
-        periodicidadePreventiva: osAtual.periodicidadePreventiva,
         dataProgramada: proximaData,
+        // Verifica sobreposição de periodicidades usando array GIN
+        periodicidadesSelecionadas: { hasSome: periodicidades },
       },
     });
 
     if (jaExiste) {
-      return NextResponse.json(
-        { error: "Já existe uma OS nessa data" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Já existe uma OS para essas periodicidades nessa data" }, { status: 400 });
     }
 
-    // 🚀 cria nova OS
-    const novaOS = await prisma.ordemServico.create({
-      data: {
-        numero: `OS-${Date.now()}`, // ajuste se tiver lógica própria
-        titulo: osAtual.titulo,
-        tipoOS: "PREVENTIVA",
-        periodicidadePreventiva: osAtual.periodicidadePreventiva,
-        descricao: osAtual.descricao,
-        motivoOS: "Gerada automaticamente",
-        subsistema: osAtual.subsistema,
-        containerId: osAtual.containerId,
-        status: "ABERTA",
-        prioridade: osAtual.prioridade,
-        dataProgramada: proximaData,
-        abertoPorId: osAtual.abertoPorId,
-      },
-    });
+    const count = await prisma.ordemServico.count();
+    const numero = gerarNumeroOS(count + 1);
 
-    // 🧠 gera checklist correto
-    const itens = itensPorPeriodicidade(osAtual.periodicidadePreventiva);
+    // Cria nova OS com as mesmas periodicidades
+    const novaOS = await prisma.$transaction(async (tx) => {
+      const os = await tx.ordemServico.create({
+        data: {
+          numero,
+          titulo: osAtual.titulo,
+          tipoOS: "PREVENTIVA",
+          periodicidadesSelecionadas: periodicidades,
+          periodicidadePreventiva: osAtual.periodicidadePreventiva, // legado
+          descricao: osAtual.descricao,
+          motivoOS: "Gerada automaticamente a partir da OS anterior.",
+          subsistema: osAtual.subsistema,
+          containerId: osAtual.containerId,
+          status: "ABERTA",
+          prioridade: osAtual.prioridade,
+          dataProgramada: proximaData,
+          responsavelId: osAtual.responsavelId,
+          abertoPorId: osAtual.abertoPorId,
+        },
+      });
 
-    await prisma.checklistItemOS.createMany({
-      data: itens.map((item) => ({
-        osId: novaOS.id,
-        itemId: item.id,
-        descricao: item.descricao,
-        periodicidade: item.periodicidade,
-        subsistema: item.subsistema,
-        referencia: item.referencia,
-        status: "PENDENTE",
-      })),
+      // Gera checklist unificado de todas as periodicidades
+      const itens = itensPorMultiplasPeriodicidades(periodicidades);
+      if (itens.length > 0) {
+        await tx.checklistItemOS.createMany({
+          data: itens.map((item) => ({
+            osId: os.id,
+            itemId: item.id,
+            descricao: item.descricao,
+            periodicidade: item.periodicidade,
+            subsistema: item.subsistema,
+            referencia: item.referencia,
+            status: "PENDENTE",
+          })),
+        });
+      }
+
+      await tx.historicoOS.create({
+        data: {
+          osId: os.id,
+          statusPara: "ABERTA",
+          observacao: `OS gerada automaticamente a partir de ${osAtual.numero}`,
+          usuarioId: osAtual.abertoPorId,
+        },
+      });
+
+      return os;
     });
 
     return NextResponse.json(novaOS);

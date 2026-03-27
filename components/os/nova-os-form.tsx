@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useMemo, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   ATIVIDADE_CORRETIVA_LABEL, ATIVIDADES_CORRETIVAS, SUBSISTEMAS,
@@ -9,14 +9,14 @@ import {
 } from "@/lib/sla-manual";
 import {
   PERIODICIDADE_LABEL, PERIODICIDADES_ORDENADAS,
-  PERIODICIDADE_COR, itensPorPeriodicidade,
+  PERIODICIDADE_COR, itensPorMultiplasPeriodicidades,
 } from "@/lib/checklist-preventiva";
 import { addHours, format } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   AlertCircle, BookOpen, Clock, Upload, X, FileText,
   Image as ImageIcon, File, CalendarIcon, Zap, CheckCircle2,
-  ClipboardCheck, List, Calendar,
+  ClipboardCheck, List, Calendar, CalendarRange, Layers, Box, ImagePlus,
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem,
@@ -32,6 +32,13 @@ import { cn } from "@/lib/utils";
 
 interface Tecnico { id: string; nome: string; cargo: string; avatarUrl?: string | null; }
 interface AnexoLocal { uid: string; file: File; }
+interface AssetDraft {
+  itemId: string;
+  nome: string;
+  codigo: string;
+  fotoFile: File | null;
+  fotoPreviewUrl: string | null;
+}
 
 // ─── DateTimePicker ───────────────────────────────────────────────────────────
 function DateTimePicker({
@@ -80,7 +87,7 @@ function DateTimePicker({
   );
 }
 
-// ─── DatePicker simples (sem hora) ────────────────────────────────────────────
+// ─── DatePicker simples ────────────────────────────────────────────────────────
 function DatePicker({
   value, onChange, placeholder = "Selecionar data", required,
 }: {
@@ -144,6 +151,97 @@ function SectionDivider({ children }: { children: React.ReactNode }) {
   );
 }
 
+
+function buildAssetDraft(itemId: string): AssetDraft {
+  return { itemId, nome: "", codigo: "", fotoFile: null, fotoPreviewUrl: null };
+}
+
+function AssetConfigurator({
+  item,
+  value,
+  onChange,
+}: {
+  item: { id: string; descricao: string; periodicidade: string; };
+  value: AssetDraft;
+  onChange: (next: AssetDraft) => void;
+}) {
+  return (
+    <div className="rounded-2xl border border-purple-100 bg-white p-4 space-y-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-gray-800 leading-snug">
+            <span className="font-mono text-xs text-purple-400 mr-1">{item.id}</span>
+            {item.descricao}
+          </p>
+          <p className="text-[11px] text-gray-400 mt-1">Periodicidade: {item.periodicidade}</p>
+        </div>
+        <div className="shrink-0 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide flex items-center gap-1">
+          <Box className="w-3 h-3" /> Ativo do item
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <Field label="Nome do ativo">
+          <Input
+            value={value.nome}
+            onChange={(e) => onChange({ ...value, nome: e.target.value })}
+            className="rounded-xl border-gray-200 focus-visible:ring-purple-300"
+            placeholder="Ex: Inversor String 01"
+          />
+        </Field>
+        <Field label="Código do ativo">
+          <Input
+            value={value.codigo}
+            onChange={(e) => onChange({ ...value, codigo: e.target.value })}
+            className="rounded-xl border-gray-200 focus-visible:ring-purple-300"
+            placeholder="Ex: INV-001"
+          />
+        </Field>
+      </div>
+
+      <Field label="Foto do ativo" hint="opcional">
+        <label className="flex items-center gap-3 rounded-xl border border-dashed border-purple-200 bg-purple-50/50 px-3 py-3 cursor-pointer hover:bg-purple-50 transition-colors">
+          <div className="w-10 h-10 rounded-xl bg-white border border-purple-100 flex items-center justify-center shrink-0">
+            <ImagePlus className="w-4 h-4 text-purple-500" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-purple-800">Criar novo ativo</p>
+            <p className="text-xs text-purple-600">Enviar foto do equipamento agora. Seleção de ativo existente pode ser adicionada depois.</p>
+          </div>
+          <input
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0] ?? null;
+              onChange({
+                ...value,
+                fotoFile: file,
+                fotoPreviewUrl: file ? URL.createObjectURL(file) : null,
+              });
+            }}
+          />
+        </label>
+
+        {(value.fotoPreviewUrl || value.fotoFile) && (
+          <div className="mt-3 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-3">
+            {value.fotoPreviewUrl ? (
+              <img src={value.fotoPreviewUrl} alt={value.nome || item.descricao} className="w-16 h-16 rounded-lg object-cover border border-gray-200 bg-white" />
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-medium text-gray-700 truncate">{value.fotoFile?.name ?? "Imagem selecionada"}</p>
+              {value.fotoFile && <p className="text-xs text-gray-400">{formatBytes(value.fotoFile.size)}</p>}
+            </div>
+            <Button type="button" variant="outline" className="rounded-xl" onClick={() => onChange({ ...value, fotoFile: null, fotoPreviewUrl: null })}>
+              Remover
+            </Button>
+          </div>
+        )}
+      </Field>
+    </div>
+  );
+}
+
 // ─── Componente Principal ─────────────────────────────────────────────────────
 export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: string }) {
   const router = useRouter();
@@ -156,15 +254,18 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
   // ── Classificação principal ──────────────────────────────────────────────
   const [tipoOS, setTipoOS] = useState<"" | "PREVENTIVA" | "CORRETIVA">("");
 
-  // ── Campos preventiva ────────────────────────────────────────────────────
+  // ── Campos preventiva (NOVO MODELO: multi-periodicidade) ─────────────────
   const [prevForm, setPrevForm] = useState({
-    periodicidadePreventiva: "",
+    periodicidadesSelecionadas: [] as string[],
     titulo:         "",
     prioridade:     "MEDIA",
     dataProgramada: "",
+    dataFimProgramada: "",
     containerId:    "",
     responsavelId:  "",
   });
+  const [itemAssets, setItemAssets] = useState<Record<string, AssetDraft>>({});
+  const [creatingAssets, setCreatingAssets] = useState(false);
 
   // ── Campos corretiva ─────────────────────────────────────────────────────
   const [corrForm, setCorrForm] = useState({
@@ -184,8 +285,21 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
   const [anexos, setAnexos] = useState<AnexoLocal[]>([]);
 
   // ── Helpers de estado ────────────────────────────────────────────────────
-  function setPrev(k: string, v: string) { setPrevForm((f) => ({ ...f, [k]: v })); }
+  function setPrev(k: string, v: string | string[]) { setPrevForm((f) => ({ ...f, [k]: v })); }
   function setCorr(k: string, v: string) { setCorrForm((f) => ({ ...f, [k]: v })); }
+  function setItemAsset(itemId: string, next: AssetDraft) {
+    setItemAssets((prev) => ({ ...prev, [itemId]: next }));
+  }
+
+  // ── Toggle periodicidade ─────────────────────────────────────────────────
+  function togglePeriodicidade(per: string) {
+    setPrevForm((f) => {
+      const sels = f.periodicidadesSelecionadas;
+      const novo = sels.includes(per) ? sels.filter((p) => p !== per) : [...sels, per];
+      return { ...f, periodicidadesSelecionadas: novo };
+    });
+    setShowChecklist(true);
+  }
 
   // ── Preview SLA (corretiva) ──────────────────────────────────────────────
   const prazoConfig   = corrForm.tipoAtividadeCorretiva ? PRAZO_SLA[corrForm.tipoAtividadeCorretiva] : null;
@@ -194,10 +308,27 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
   const dataLimitePreview  = corrForm.dataEmissaoAxia && prazoHoras  ? addHours(new Date(corrForm.dataEmissaoAxia), prazoHoras)  : null;
   const dataAtuacaoPreview = corrForm.dataEmissaoAxia && atuacaoHoras ? addHours(new Date(corrForm.dataEmissaoAxia), atuacaoHoras) : null;
 
-  // ── Itens de checklist da periodicidade selecionada ──────────────────────
-  const itensChecklist = prevForm.periodicidadePreventiva
-    ? itensPorPeriodicidade(prevForm.periodicidadePreventiva)
-    : [];
+  // ── Itens de checklist unificados das periodicidades selecionadas ─────────
+  const itensChecklist = useMemo(
+    () => itensPorMultiplasPeriodicidades(prevForm.periodicidadesSelecionadas),
+    [prevForm.periodicidadesSelecionadas]
+  );
+
+  useEffect(() => {
+    setItemAssets((prev) => {
+      const next: Record<string, AssetDraft> = {};
+      for (const item of itensChecklist) {
+        next[item.id] = prev[item.id] ?? buildAssetDraft(item.id);
+      }
+      return next;
+    });
+  }, [itensChecklist]);
+
+  // ── Prioridade automática ─────────────────────────────────────────────────
+  const prioridadeAuto = useMemo(() => {
+    if (prevForm.periodicidadesSelecionadas.some((p) => ["ANUAL", "SEMESTRAL"].includes(p))) return "ALTA";
+    return "MEDIA";
+  }, [prevForm.periodicidadesSelecionadas]);
 
   // ── Anexos ───────────────────────────────────────────────────────────────
   function addFiles(files: FileList | null) {
@@ -217,15 +348,45 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
       let payload: Record<string, unknown>;
 
       if (tipoOS === "PREVENTIVA") {
+        setCreatingAssets(true);
+        const checklistAssets: Array<{ itemId: string; assetId: string }> = [];
+
+        for (const item of itensChecklist) {
+          const asset = itemAssets[item.id];
+          if (!asset) continue;
+          const nome = asset.nome.trim();
+          const codigo = asset.codigo.trim();
+          const hasAnyAssetData = !!nome || !!codigo || !!asset.fotoFile;
+          if (!hasAnyAssetData) continue;
+          if (!nome || !codigo) {
+            throw new Error(`Preencha nome e código do ativo no item ${item.id}.`);
+          }
+
+          const fd = new FormData();
+          fd.append("nome", nome);
+          fd.append("codigo", codigo);
+          if (asset.fotoFile) fd.append("file", asset.fotoFile);
+
+          const assetRes = await fetch("/api/assets", { method: "POST", body: fd });
+          const assetJson = await assetRes.json().catch(() => ({}));
+          if (!assetRes.ok || !assetJson?.asset?.id) {
+            throw new Error(assetJson?.error ?? `Erro ao criar ativo do item ${item.id}.`);
+          }
+
+          checklistAssets.push({ itemId: item.id, assetId: assetJson.asset.id });
+        }
+
         payload = {
           tipoOS: "PREVENTIVA",
-          periodicidadePreventiva: prevForm.periodicidadePreventiva,
+          periodicidadesSelecionadas: prevForm.periodicidadesSelecionadas,
           titulo:        prevForm.titulo || undefined,
-          prioridade:    prevForm.prioridade,
+          prioridade:    prevForm.prioridade || prioridadeAuto,
           dataProgramada: new Date(prevForm.dataProgramada).toISOString(),
+          dataFimProgramada: prevForm.dataFimProgramada ? new Date(prevForm.dataFimProgramada).toISOString() : undefined,
           subsistema:    "Geral",
           containerId:   prevForm.containerId   || undefined,
           responsavelId: prevForm.responsavelId || undefined,
+          checklistAssets,
         };
       } else {
         payload = {
@@ -262,12 +423,12 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
       router.push(`/ordens/${data.os.id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro inesperado");
-    } finally { setLoading(false); }
+    } finally { setLoading(false); setCreatingAssets(false); }
   }
 
   const canSubmit =
     tipoOS === "PREVENTIVA"
-      ? !!prevForm.periodicidadePreventiva && !!prevForm.dataProgramada
+      ? prevForm.periodicidadesSelecionadas.length > 0 && !!prevForm.dataProgramada
       : tipoOS === "CORRETIVA"
         ? !!corrForm.tipoAtividadeCorretiva && !!corrForm.titulo && !!corrForm.dataEmissaoAxia
         : false;
@@ -300,11 +461,11 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
               <p className={cn("text-sm font-bold", tipoOS === "PREVENTIVA" ? "text-purple-800" : "text-gray-800")}>
                 Manutenção Preventiva
               </p>
-              <p className="text-xs text-gray-400">Sem SLA — cronograma periódico</p>
+              <p className="text-xs text-gray-400">Sem SLA — visita programada</p>
             </div>
           </div>
           <p className="text-xs text-gray-500">
-            Checklist automático gerado pela periodicidade selecionada. Não possui SLA contratual.
+            Uma visita pode cobrir várias periodicidades. Checklist unificado gerado automaticamente.
           </p>
         </button>
 
@@ -333,42 +494,85 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
         </button>
       </div>
 
-      {/* ── 2a. Formulário PREVENTIVA ───────────────────────────────────── */}
+      {/* ── 2a. Formulário PREVENTIVA ─── NOVO MODELO ──────────────────── */}
       {tipoOS === "PREVENTIVA" && (
         <>
-          {/* Periodicidade */}
+          {/* Datas da visita */}
+          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
+            <SectionDivider>Datas da Visita</SectionDivider>
+            <div className="grid grid-cols-2 gap-4">
+              <Field label="Data de início" required>
+                <DatePicker
+                  value={prevForm.dataProgramada}
+                  onChange={(iso) => setPrev("dataProgramada", iso)}
+                  placeholder="Selecionar data"
+                  required
+                />
+              </Field>
+              <Field label="Data de fim" hint="opcional — se visita durar mais de 1 dia">
+                <DatePicker
+                  value={prevForm.dataFimProgramada}
+                  onChange={(iso) => setPrev("dataFimProgramada", iso)}
+                  placeholder="Mesmo dia (opcional)"
+                />
+              </Field>
+            </div>
+          </div>
+
+          {/* Periodicidades — MULTI-SELECT */}
           <div className="bg-purple-50 rounded-2xl border border-purple-100 p-6 space-y-4">
-            <SectionDivider>Periodicidade</SectionDivider>
-            <Field label="Selecionar periodicidade" required>
-              <div className="grid grid-cols-2 gap-2">
-                {PERIODICIDADES_ORDENADAS.map((per) => {
-                  const cor = PERIODICIDADE_COR[per];
-                  const sel = prevForm.periodicidadePreventiva === per;
+            <SectionDivider>Periodicidades desta Visita</SectionDivider>
+            <p className="text-xs text-gray-500 -mt-2">
+              Selecione todas as periodicidades que serão executadas nesta visita. Os checklists serão unificados automaticamente sem duplicações.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {PERIODICIDADES_ORDENADAS.map((per) => {
+                const cor = PERIODICIDADE_COR[per];
+                const sel = prevForm.periodicidadesSelecionadas.includes(per);
+                const qtdProprios = itensPorMultiplasPeriodicidades([per]).length;
+                return (
+                  <button key={per} type="button"
+                    onClick={() => togglePeriodicidade(per)}
+                    className={cn(
+                      "rounded-xl border px-3 py-2.5 text-left transition-all text-xs font-medium",
+                      sel
+                        ? `${cor.bg} ${cor.text} ${cor.border} ring-2 ring-offset-1 ring-violet-300`
+                        : "border-gray-200 bg-white hover:border-gray-300"
+                    )}>
+                    <div className="flex items-center justify-between">
+                      <span className="font-semibold">{PERIODICIDADE_LABEL[per]}</span>
+                      {sel && <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />}
+                    </div>
+                    <span className={cn("text-[10px] font-normal", sel ? cor.text : "text-gray-400")}>
+                      {qtdProprios} item{qtdProprios !== 1 ? "s" : ""} próprios
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Resumo das seleções */}
+            {prevForm.periodicidadesSelecionadas.length > 0 && (
+              <div className="flex items-center gap-2 flex-wrap">
+                <Layers className="w-3.5 h-3.5 text-violet-500 shrink-0" />
+                <span className="text-xs text-violet-700 font-medium">Selecionado:</span>
+                {prevForm.periodicidadesSelecionadas.map((p) => {
+                  const cor = PERIODICIDADE_COR[p];
                   return (
-                    <button key={per} type="button"
-                      onClick={() => { setPrev("periodicidadePreventiva", per); setShowChecklist(true); }}
-                      className={cn(
-                        "rounded-xl border px-3 py-2.5 text-left transition-all text-xs font-medium",
-                        sel
-                          ? `${cor.bg} ${cor.text} ${cor.border} ring-2 ring-offset-1`
-                          : "border-gray-200 bg-white hover:border-gray-300"
-                      )}>
-                      <span className="block font-semibold">{PERIODICIDADE_LABEL[per]}</span>
-                      <span className={cn("text-[10px] font-normal", sel ? cor.text : "text-gray-400")}>
-                        {itensPorPeriodicidade(per).length} itens
-                      </span>
-                    </button>
+                    <span key={p} className={cn("text-[10px] font-bold px-2 py-0.5 rounded-full border", cor.bg, cor.text, cor.border)}>
+                      {PERIODICIDADE_LABEL[p]}
+                    </span>
                   );
                 })}
               </div>
-            </Field>
+            )}
 
-            {/* Preview checklist */}
-            {prevForm.periodicidadePreventiva && showChecklist && itensChecklist.length > 0 && (
+            {/* Preview checklist unificado */}
+            {prevForm.periodicidadesSelecionadas.length > 0 && showChecklist && itensChecklist.length > 0 && (
               <div className="bg-white rounded-xl border border-purple-100 p-4">
                 <div className="flex items-center justify-between mb-3">
                   <p className="text-sm font-semibold text-purple-800 flex items-center gap-2">
-                    <List className="w-4 h-4" /> Itens que serão gerados
+                    <List className="w-4 h-4" /> {itensChecklist.length} itens serão gerados (sem duplicatas)
                   </p>
                   <button type="button" onClick={() => setShowChecklist(false)} className="text-xs text-purple-500 hover:underline">ocultar</button>
                 </div>
@@ -377,30 +581,48 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
                     <div key={item.id} className="flex items-center gap-2 text-xs text-purple-700">
                       <span className="font-mono text-purple-400 shrink-0 w-10">{item.id}</span>
                       <span className="flex-1 truncate">{item.descricao}</span>
-                      <span className="shrink-0 text-purple-400">{item.subsistema}</span>
+                      <span className="shrink-0 text-purple-400 text-[10px]">{item.periodicidade}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
+            {prevForm.periodicidadesSelecionadas.length > 0 && !showChecklist && (
+              <button type="button" onClick={() => setShowChecklist(true)}
+                className="text-xs text-purple-500 hover:underline flex items-center gap-1">
+                <List className="w-3.5 h-3.5" /> Ver {itensChecklist.length} itens do checklist
+              </button>
+            )}
           </div>
 
-          {/* Dados da OS preventiva */}
+          {/* Ativos por item */}
+          {prevForm.periodicidadesSelecionadas.length > 0 && itensChecklist.length > 0 && (
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
+              <SectionDivider>Como fazer · Ativo do item</SectionDivider>
+              <p className="text-xs text-gray-500 -mt-2">
+                Vincule o equipamento real a cada item de checklist. Esses dados aparecerão na OS, no detalhe e no PDF técnico.
+              </p>
+              <div className="space-y-3">
+                {itensChecklist.map((item) => (
+                  <AssetConfigurator
+                    key={item.id}
+                    item={item}
+                    value={itemAssets[item.id] ?? buildAssetDraft(item.id)}
+                    onChange={(next) => setItemAsset(item.id, next)}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Dados adicionais */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
-            <SectionDivider>Programação</SectionDivider>
-            <Field label="Data programada para execução" required>
-              <DatePicker
-                value={prevForm.dataProgramada}
-                onChange={(iso) => setPrev("dataProgramada", iso)}
-                placeholder="Selecionar data"
-                required
-              />
-            </Field>
+            <SectionDivider>Dados Adicionais</SectionDivider>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Título personalizado">
                 <Input value={prevForm.titulo} onChange={(e) => setPrev("titulo", e.target.value)}
                   className="rounded-xl border-gray-200 focus-visible:ring-purple-300"
-                  placeholder="Opcional — gerado automaticamente" />
+                  placeholder="Gerado automaticamente" />
               </Field>
               <Field label="Container ID">
                 <Input value={prevForm.containerId} onChange={(e) => setPrev("containerId", e.target.value)}
@@ -409,7 +631,7 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
             </div>
             <div className="grid grid-cols-2 gap-4">
               <Field label="Prioridade" required>
-                <Select value={prevForm.prioridade} onValueChange={(v) => setPrev("prioridade", v)}>
+                <Select value={prevForm.prioridade || prioridadeAuto} onValueChange={(v) => setPrev("prioridade", v)}>
                   <SelectTrigger className="rounded-xl border-gray-200 bg-white"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="BAIXA">Baixa</SelectItem>
@@ -436,11 +658,12 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
 
           {/* Info — sem SLA */}
           <div className="rounded-2xl border border-purple-100 bg-purple-50 px-5 py-4 flex items-start gap-3">
-            <ClipboardCheck className="w-5 h-5 text-purple-400 mt-0.5 shrink-0" />
+            <CalendarRange className="w-5 h-5 text-purple-400 mt-0.5 shrink-0" />
             <div>
-              <p className="text-sm font-semibold text-purple-800">Manutenção preventiva não possui SLA</p>
+              <p className="text-sm font-semibold text-purple-800">Uma visita, múltiplas periodicidades</p>
               <p className="text-xs text-purple-600 mt-0.5">
-                O prazo é definido pelo cronograma de periodicidade. A OS será visível no calendário na data programada.
+                O checklist será unificado com todos os itens das periodicidades selecionadas, sem duplicações.
+                A OS aparecerá no Gantt em todas as linhas de periodicidade correspondentes.
               </p>
             </div>
           </div>
@@ -592,7 +815,7 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
         </>
       )}
 
-      {/* ── Anexos (sempre visível após escolher tipo) ─────────────────────── */}
+      {/* ── Anexos ─────────────────────────────────────────────────────────── */}
       {tipoOS && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
           <SectionDivider>Anexos (opcional)</SectionDivider>
@@ -634,7 +857,7 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
         </div>
       )}
 
-      {/* ── Ações ────────────────────────────────────────────────────────────── */}
+      {/* ── Ações ─────────────────────────────────────────────────────────── */}
       <div className="flex gap-3">
         <button type="button" onClick={() => router.back()}
           className="flex-1 py-3 text-sm text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors font-medium">
@@ -643,7 +866,7 @@ export function NovaOSForm({ tecnicos }: { tecnicos: Tecnico[]; usuarioId: strin
         <button type="submit" disabled={loading || !canSubmit}
           className="flex-1 py-3 text-sm text-white font-semibold rounded-xl disabled:opacity-40 transition-all"
           style={{ background: loading ? "#9ca3af" : "linear-gradient(135deg,#1E1B4B 0%,#8B1FA9 100%)" }}>
-          {loading ? "Abrindo OS..." : "Abrir Ordem de Serviço"}
+          {loading ? (creatingAssets ? "Criando ativos e abrindo OS..." : "Abrindo OS...") : "Abrir Ordem de Serviço"}
         </button>
       </div>
     </form>

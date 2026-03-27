@@ -1,7 +1,3 @@
-/**
- * lib/checklist-preventiva.ts
- * Manual ANTSPACE HK3 V6 — Lógica de acúmulo mensal
- */
 
 export interface ChecklistItem {
   id: string;
@@ -38,20 +34,62 @@ export const CHECKLIST_POR_ID = Object.fromEntries(
   CHECKLIST_PREVENTIVA.map((i) => [i.id, i])
 );
 
-/** Acúmulo inteligente: OS de periodicidade maior inclui tarefas das menores */
+/** Mapa: enum periodicidade → rótulos de itens que devem ser incluídos */
 export const PERIODICIDADE_ITENS: Record<string, string[]> = {
   MENSAL:     ["Mensal"],
   SEMANAL:    ["Semanal"],
-  TRIMESTRAL: ["Mensal", "Trimestral"],
-  SEMESTRAL:  ["Mensal", "2 meses", "Trimestral", "Semestral"],
-  ANUAL:      ["Mensal", "2 meses", "Trimestral", "Semestral", "Anual"],
   HORAS_2000: ["2 meses"],
+  TRIMESTRAL: ["Trimestral"],
+  SEMESTRAL:  ["Semestral"],
+  ANUAL:      ["Anual"],
   BIENNIAL:   ["A cada 1-2 anos"],
 };
 
+/**
+ * Retorna itens para uma única periodicidade (sem acúmulo).
+ * Usado para preview e geração individual.
+ */
 export function itensPorPeriodicidade(periodicidade: string): ChecklistItem[] {
   const rotulos = PERIODICIDADE_ITENS[periodicidade] ?? [];
   return CHECKLIST_PREVENTIVA.filter((item) => rotulos.includes(item.periodicidade));
+}
+
+/**
+ * NOVO: Retorna a lista unificada de itens para múltiplas periodicidades.
+ * - Pega itens de cada periodicidade selecionada
+ * - Remove duplicados por itemId
+ * - Mantém a ordem original do CHECKLIST_PREVENTIVA
+ */
+export function itensPorMultiplasPeriodicidades(periodicidades: string[]): ChecklistItem[] {
+  const idsVistos = new Set<string>();
+  const resultado: ChecklistItem[] = [];
+
+  // Itera na ordem original do checklist para manter consistência
+  for (const item of CHECKLIST_PREVENTIVA) {
+    if (idsVistos.has(item.id)) continue;
+
+    // Verifica se alguma das periodicidades selecionadas inclui este item
+    const incluir = periodicidades.some((per) => {
+      const rotulos = PERIODICIDADE_ITENS[per] ?? [];
+      return rotulos.includes(item.periodicidade);
+    });
+
+    if (incluir) {
+      resultado.push(item);
+      idsVistos.add(item.id);
+    }
+  }
+
+  return resultado;
+}
+
+/**
+ * Compatibilidade legada: aceita periodicidade única como string.
+ * Internamente chama itensPorMultiplasPeriodicidades.
+ */
+export function itensParaOS(periodicidades: string | string[]): ChecklistItem[] {
+  const arr = Array.isArray(periodicidades) ? periodicidades : [periodicidades];
+  return itensPorMultiplasPeriodicidades(arr);
 }
 
 export const PERIODICIDADE_LABEL: Record<string, string> = {
@@ -73,9 +111,9 @@ export const PERIODICIDADE_COR: Record<string, { bg: string; text: string; borde
   DIARIA:     { bg: "bg-sky-100",    text: "text-sky-700",    border: "border-sky-200" },
   SEMANAL:    { bg: "bg-blue-100",   text: "text-blue-700",   border: "border-blue-200" },
   MENSAL:     { bg: "bg-violet-100", text: "text-violet-700", border: "border-violet-200" },
+  HORAS_2000: { bg: "bg-amber-100",  text: "text-amber-700",  border: "border-amber-200" },
   TRIMESTRAL: { bg: "bg-purple-100", text: "text-purple-700", border: "border-purple-200" },
   SEMESTRAL:  { bg: "bg-fuchsia-100",text: "text-fuchsia-700",border: "border-fuchsia-200" },
-  HORAS_2000: { bg: "bg-amber-100",  text: "text-amber-700",  border: "border-amber-200" },
   ANUAL:      { bg: "bg-emerald-100",text: "text-emerald-700",border: "border-emerald-200" },
   BIENNIAL:   { bg: "bg-teal-100",   text: "text-teal-700",   border: "border-teal-200" },
 };
@@ -307,3 +345,13 @@ export const INSTRUCOES_MANUAL: Record<string, { titulo: string; passos: string[
     ],
   },
 };
+
+export function findChecklistItemsByIds(ids: string[]) {
+  const wanted = new Set(ids);
+  return CHECKLIST_PREVENTIVA.filter((item) => wanted.has(item.id));
+}
+
+export function checklistItemLabel(itemId: string) {
+  const item = CHECKLIST_POR_ID[itemId];
+  return item ? `${item.id} · ${item.descricao}` : itemId;
+}

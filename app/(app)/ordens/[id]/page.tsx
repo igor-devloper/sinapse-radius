@@ -2,10 +2,14 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { auth } from "@clerk/nextjs/server";
 import { calcularSLA, formatarDataBR, formatarDataCurta, ATIVIDADE_CORRETIVA_LABEL } from "@/lib/sla-manual";
+import { PERIODICIDADE_LABEL, PERIODICIDADE_COR } from "@/lib/checklist-preventiva";
 import { SLABadge } from "@/components/os/sla-badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, Clock, CheckCircle2, AlertTriangle, FileText, Tag, Server, Cpu, ArrowLeft } from "lucide-react";
+import {
+  Calendar, Clock, CheckCircle2, AlertTriangle, FileText,
+  Tag, Server, Cpu, ArrowLeft, CalendarRange, Layers,
+} from "lucide-react";
 import { AtualizarStatusOS } from "@/components/os/atualizar-status";
 import { ComentariosOS } from "@/components/os/comentarios";
 import { HistoricoTimeline } from "@/components/os/historico-timeline";
@@ -14,6 +18,9 @@ import { ChecklistPreventiva } from "@/components/os/checklist-preventiva";
 import { DownloadRelatorioButton } from "@/components/os/download-relatorio-button";
 import { EditarDatasOS } from "@/components/os/editar-datas-os";
 import Link from "next/link";
+import { cn } from "@/lib/utils";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 const prioridadeMap: Record<string, { label: string; class: string; dot: string }> = {
   CRITICA: { label: "Crítica", class: "bg-red-100 text-red-700 border-red-200",         dot: "bg-red-500" },
@@ -30,7 +37,6 @@ const statusMap: Record<string, { label: string; class: string }> = {
   CANCELADA:       { label: "Cancelada",     class: "bg-red-100 text-red-600 border-red-200" },
 };
 
-// ✅ Label para o tipoOS (campo correto do schema)
 const TIPO_OS_LABEL: Record<string, string> = {
   PREVENTIVA: "Preventiva",
   CORRETIVA: "Corretiva",
@@ -56,13 +62,15 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
         orderBy: { createdAt: "asc" },
       },
       anexos: { orderBy: { createdAt: "asc" } },
-      checklistItems: { orderBy: [{ subsistema: "asc" }, { itemId: "asc" }] },
+      checklistItems: {
+        include: { asset: { select: { nome: true, codigo: true, fotoUrl: true } } },
+        orderBy: [{ subsistema: "asc" }, { itemId: "asc" }],
+      },
     },
   });
 
   if (!os) notFound();
 
-  // ✅ SLA apenas para corretivas com dados completos
   const sla =
     os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
       ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
@@ -71,9 +79,16 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
   const prioridade = prioridadeMap[os.prioridade];
   const status = statusMap[os.status];
   const canEdit = ["ADMIN","SUPERVISOR","TECNICO"].includes(usuario?.cargo ?? "");
-  // ✅ Corrigido: usa tipoOS para verificar se é preventiva
   const isPreventiva = os.tipoOS === "PREVENTIVA";
   const isConcluida = os.status === "CONCLUIDA";
+
+  // Periodicidades: novo modelo (array) com fallback para modelo legado
+  const periodicidades: string[] =
+    (os.periodicidadesSelecionadas && os.periodicidadesSelecionadas.length > 0)
+      ? os.periodicidadesSelecionadas
+      : os.periodicidadePreventiva
+        ? [os.periodicidadePreventiva]
+        : [];
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
@@ -97,10 +112,19 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                 <span className={`w-1.5 h-1.5 rounded-full ${prioridade.dot}`} />
                 {prioridade.label}
               </span>
-              {/* ✅ Usa tipoOS corretamente */}
               <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${isPreventiva ? "bg-purple-50 text-purple-700 border-purple-100" : "bg-orange-50 text-orange-700 border-orange-100"}`}>
                 {TIPO_OS_LABEL[os.tipoOS] ?? os.tipoOS}
               </span>
+
+              {/* NOVO: Badges de periodicidades para preventivas */}
+              {isPreventiva && periodicidades.map((per) => {
+                const cor = PERIODICIDADE_COR[per] ?? { bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-200" };
+                return (
+                  <span key={per} className={cn("text-xs px-2.5 py-1 rounded-full font-semibold border flex items-center gap-1", cor.bg, cor.text, cor.border)}>
+                    {PERIODICIDADE_LABEL[per] ?? per}
+                  </span>
+                );
+              })}
             </div>
             <h1 className="text-2xl font-bold text-gray-900 leading-tight">{os.titulo}</h1>
             <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
@@ -115,6 +139,31 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
             <DownloadRelatorioButton osId={os.id} numero={os.numero} status={os.status} />
           </div>
         </div>
+
+        {/* Banner: multi-periodicidade (só preventivas com 2+ periodicidades) */}
+        {isPreventiva && periodicidades.length > 1 && (
+          <div className="mt-4 flex items-start gap-3 bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
+            <Layers className="w-5 h-5 text-violet-500 mt-0.5 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-violet-800">
+                Visita com {periodicidades.length} periodicidades
+              </p>
+              <div className="flex gap-1.5 flex-wrap mt-1.5">
+                {periodicidades.map((per) => {
+                  const cor = PERIODICIDADE_COR[per] ?? { bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-200" };
+                  return (
+                    <span key={per} className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full border", cor.bg, cor.text, cor.border)}>
+                      {PERIODICIDADE_LABEL[per] ?? per}
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-violet-600 mt-1">
+                O checklist abaixo reúne todos os itens de todas as periodicidades, sem duplicações.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Banner de conclusão */}
         {isConcluida && (
@@ -135,10 +184,8 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Coluna principal */}
         <div className="lg:col-span-2 space-y-5">
-          {/* ✅ SLA só aparece para corretivas */}
           {sla && <SLABadge sla={sla} showProgress />}
 
-          {/* ✅ Checklist para preventivas, descrição para corretivas */}
           {isPreventiva ? (
             <ChecklistPreventiva osId={os.id} items={os.checklistItems} canEdit={canEdit && !isConcluida} />
           ) : (
@@ -182,7 +229,9 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
           {/* Datas */}
           <Card className="border-gray-100 shadow-sm rounded-2xl">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-semibold text-gray-700">Datas e prazos</CardTitle>
+              <CardTitle className="text-sm font-semibold text-gray-700 flex items-center gap-2">
+                <CalendarRange className="w-4 h-4 text-gray-400" /> Datas da visita
+              </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && (
@@ -199,12 +248,23 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                   <Separator />
                 </>
               )}
-              <InfoRow icon={Calendar} label="Data programada" value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"} />
+              <InfoRow
+                icon={Calendar}
+                label="Início da visita"
+                value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"}
+              />
+              {os.dataFimProgramada && (
+                <InfoRow
+                  icon={Calendar}
+                  label="Fim da visita"
+                  value={formatarDataCurta(os.dataFimProgramada)}
+                />
+              )}
               <InfoRow icon={Calendar} label="Abertura sistema" value={formatarDataBR(os.createdAt)} />
             </CardContent>
           </Card>
 
-          {/* Início e conclusão reais — editáveis */}
+          {/* Execução real */}
           {canEdit ? (
             <Card className="border-gray-100 shadow-sm rounded-2xl">
               <CardHeader className="pb-2">

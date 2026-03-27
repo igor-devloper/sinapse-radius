@@ -8,6 +8,7 @@ import {
   ClipboardList,
   CalendarDays,
   ShieldCheck,
+  Package2,
 } from "lucide-react";
 import {
   Sidebar,
@@ -20,6 +21,7 @@ import {
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
+import SvgIcon from "./logo";
 
 const navItems = [
   {
@@ -38,6 +40,12 @@ const navItems = [
     label: "Calendário",
     href: "/calendario",
     icon: CalendarDays,
+    cargos: ["ADMIN", "SUPERVISOR", "TECNICO", "VISUALIZADOR"],
+  },
+  {
+    label: "Ativos",
+    href: "/ativos",
+    icon: Package2,
     cargos: ["ADMIN", "SUPERVISOR", "TECNICO", "VISUALIZADOR"],
   },
   {
@@ -110,6 +118,7 @@ export function AppSidebar({ cargo, nome }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter className="p-3">
+
         <div className="rounded-lg bg-sidebar-accent px-3 py-2.5 group-data-[collapsible=icon]:hidden">
           <p className="text-xs text-sidebar-foreground/60">Cargo</p>
           <p className="text-xs font-medium text-sidebar-foreground mt-0.5 capitalize">
@@ -120,6 +129,12 @@ export function AppSidebar({ cargo, nome }: AppSidebarProps) {
           <span className="text-sidebar-foreground text-xs font-bold">
             {cargo.charAt(0)}
           </span>
+        </div>
+        <div className="flex items-center justify-center gap-2">
+          <p className="text-xs font-bold">Sistema Feito por </p>
+          <div className="flex items-center justify-center bg-white px-4 max-w-25 rounded-md group-data-[collapsible=icon]:hidden">
+            <SvgIcon />
+          </div>
         </div>
       </SidebarFooter>
     </Sidebar>

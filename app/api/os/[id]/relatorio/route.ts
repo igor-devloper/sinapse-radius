@@ -25,8 +25,11 @@ export async function GET(
         include: { usuario: { select: { nome: true } } },
         orderBy: { createdAt: "asc" },
       },
-      anexos:         { orderBy: { createdAt: "asc" } },
-      checklistItems: { orderBy: [{ subsistema: "asc" }, { itemId: "asc" }] },
+      anexos: { orderBy: { createdAt: "asc" } },
+      checklistItems: {
+        include: { asset: { select: { nome: true, codigo: true, fotoUrl: true } } },
+        orderBy: [{ subsistema: "asc" }, { itemId: "asc" }],
+      },
     },
   });
 
@@ -111,10 +114,13 @@ export async function GET(
       descricao:    item.descricao,
       periodicidade: item.periodicidade,
       subsistema:   item.subsistema,
-      referencia:   item.referencia,
-      status:       item.status,
-      observacao:   item.observacao,
+      referencia: item.referencia,
+      status: item.status,
+      observacao: item.observacao,
       atualizadoEm: item.atualizadoEm?.toISOString() ?? null,
+      assetNome: item.asset?.nome ?? null,
+      assetCodigo: item.asset?.codigo ?? null,
+      assetFotoUrl: item.asset?.fotoUrl ?? null,
     })),
 
     // ── Comentários ────────────────────────────────────────────────────

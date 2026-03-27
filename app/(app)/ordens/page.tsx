@@ -82,9 +82,15 @@ export default async function OrdensPage({
     prisma.ordemServico.findMany({
       where: { tipoOS: "PREVENTIVA" },
       select: {
-        id: true, numero: true, titulo: true, status: true,
-        periodicidadePreventiva: true, dataProgramada: true,
-        dataConclusao: true, tipoOS: true,
+        id: true,
+        numero: true,
+        titulo: true,
+        status: true,
+        periodicidadePreventiva: true,
+        periodicidadesSelecionadas: true,
+        dataProgramada: true,
+        dataConclusao: true,
+        tipoOS: true,
       },
       orderBy: { dataProgramada: "asc" },
     }),
@@ -225,8 +231,12 @@ export default async function OrdensPage({
                           {ATIVIDADE_CORRETIVA_LABEL[os.tipoAtividadeCorretiva] ?? os.tipoAtividadeCorretiva}
                         </span>
                       )}
-                      {os.periodicidadePreventiva && (
-                        <span className="text-purple-500">{os.periodicidadePreventiva}</span>
+                      {isPreventiva && (
+                        <span className="text-purple-500">
+                          {Array.isArray((os as any).periodicidadesSelecionadas) && (os as any).periodicidadesSelecionadas.length > 0
+                            ? `${(os as any).periodicidadesSelecionadas.length} periodicidade(s)`
+                            : os.periodicidadePreventiva}
+                        </span>
                       )}
                     </div>
                   </div>

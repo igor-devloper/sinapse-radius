@@ -48,6 +48,8 @@ export type OSResumida = {
   tipoOS: string;
   subsistema: string;
   containerId?: string | null;
+  periodicidadePreventiva?: string | null;
+  periodicidadesSelecionadas?: string[];
   responsavel: { nome: string; avatarUrl?: string | null } | null;
   dataLimiteSLA?: Date | null;
   slaVencido?: boolean;
@@ -78,6 +80,7 @@ export async function getCalendarioData(mesParam?: string) {
       titulo: true,
       tipoOS: true,
       periodicidadePreventiva: true,
+      periodicidadesSelecionadas: true,
       prioridade: true,
       status: true,
       dataProgramada: true,
@@ -260,6 +263,8 @@ function toOSResumida(os: any): OSResumida {
     tipoOS: os.tipoOS,
     subsistema: os.subsistema,
     containerId: os.containerId ?? null,
+    periodicidadePreventiva: os.periodicidadePreventiva ?? null,
+    periodicidadesSelecionadas: Array.isArray(os.periodicidadesSelecionadas) ? os.periodicidadesSelecionadas : [],
     responsavel: os.responsavel ?? null,
     dataLimiteSLA: os.dataLimiteSLA ?? null,
     slaVencido: os.slaVencido ?? false,

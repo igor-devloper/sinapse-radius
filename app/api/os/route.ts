@@ -2,23 +2,32 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calcularSLA, gerarNumeroOS, PRAZO_HORAS } from "@/lib/sla-manual";
-import { itensPorPeriodicidade, PERIODICIDADE_LABEL } from "@/lib/checklist-preventiva";
+import { itensPorMultiplasPeriodicidades, PERIODICIDADE_LABEL } from "@/lib/checklist-preventiva";
+import { getAssetBindingsForChecklistItems } from "@/lib/assets";
 import { addHours } from "date-fns";
 import { z } from "zod";
 
 // ─── Schemas de validação ─────────────────────────────────────────────────────
 
+const PERIODICIDADES_VALIDAS = [
+  "DIARIA", "SEMANAL", "MENSAL", "TRIMESTRAL",
+  "SEMESTRAL", "ANUAL", "HORAS_2000", "BIENNIAL",
+] as const;
+
+/**
+ * NOVO SCHEMA: OS preventiva agora aceita múltiplas periodicidades.
+ * Uma OS representa uma visita real — pode cobrir Mensal + Trimestral + etc.
+ */
 const criarOSPreventivaSchema = z.object({
   tipoOS: z.literal("PREVENTIVA"),
-  periodicidadePreventiva: z.enum([
-    "DIARIA", "SEMANAL", "MENSAL", "TRIMESTRAL",
-    "SEMESTRAL", "ANUAL", "HORAS_2000", "BIENNIAL",
-  ]),
+  // Multi-select: array de 1 ou mais periodicidades
+  periodicidadesSelecionadas: z.array(z.enum(PERIODICIDADES_VALIDAS)).min(1, "Selecione ao menos uma periodicidade"),
   titulo: z.string().min(5).max(120).optional(),
   descricao: z.string().optional(),
   motivoOS: z.string().optional(),
   prioridade: z.enum(["CRITICA", "ALTA", "MEDIA", "BAIXA"]).default("MEDIA"),
   dataProgramada: z.string().datetime(),
+  dataFimProgramada: z.string().datetime().optional(),
   subsistema: z.string().default("Geral"),
   componenteTag: z.string().optional(),
   containerId: z.string().optional(),
@@ -38,7 +47,7 @@ const criarOSCoretivaSchema = z.object({
   descricao: z.string().min(10),
   motivoOS: z.string().min(5),
   prioridade: z.enum(["CRITICA", "ALTA", "MEDIA", "BAIXA"]).default("MEDIA"),
-  dataEmissaoAxia: z.string().datetime(),    // data de abertura pelo contratante (SLA)
+  dataEmissaoAxia: z.string().datetime(),
   dataProgramada: z.string().datetime().optional(),
   subsistema: z.string().min(2),
   componenteTag: z.string().optional(),
@@ -90,7 +99,6 @@ export async function GET(req: NextRequest) {
     }),
   ]);
 
-  // SLA apenas para corretivas
   const ordensComInfo = ordens.map((os) => ({
     ...os,
     sla: os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
@@ -111,7 +119,7 @@ export async function POST(req: NextRequest) {
   if (!["ADMIN", "SUPERVISOR", "TECNICO"].includes(usuario.cargo))
     return NextResponse.json({ error: "Sem permissão" }, { status: 403 });
 
-  const body  = await req.json();
+  const body   = await req.json();
   const parsed = criarOSSchema.safeParse(body);
   if (!parsed.success)
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
@@ -122,29 +130,40 @@ export async function POST(req: NextRequest) {
   const numero = gerarNumeroOS(count + 1);
 
   if (data.tipoOS === "PREVENTIVA") {
-    // ── OS Preventiva — SEM SLA ─────────────────────────────────────────────
-    const { periodicidadePreventiva } = data;
-    const itensChecklist = itensPorPeriodicidade(periodicidadePreventiva);
-    const tituloGerado = data.titulo
-      ?? `Preventiva ${PERIODICIDADE_LABEL[periodicidadePreventiva]} — ANTSPACE HK3`;
+    // ── OS Preventiva — NOVO MODELO MULTI-PERIODICIDADE ────────────────────
+    const { periodicidadesSelecionadas } = data;
+
+    // Gera checklist unificado de todas as periodicidades selecionadas
+    const itensChecklist = itensPorMultiplasPeriodicidades(periodicidadesSelecionadas);
+    const assetBindings = await getAssetBindingsForChecklistItems(itensChecklist.map((item) => item.id));
+
+    // Título automático baseado nas periodicidades
+    const labelPeriods = periodicidadesSelecionadas
+      .map((p) => PERIODICIDADE_LABEL[p])
+      .join(" + ");
+    const tituloGerado = data.titulo ?? `Preventiva ${labelPeriods} — ANTSPACE HK3`;
+
+    // Para retrocompatibilidade: guarda a primeira periodicidade no campo legado
+    const periodicidadePrincipal = periodicidadesSelecionadas[0];
 
     const os = await prisma.$transaction(async (tx) => {
       const novaOS = await tx.ordemServico.create({
         data: {
           numero,
-          titulo:                  tituloGerado,
-          descricao:               data.descricao ?? "Execução do checklist preventivo conforme Manual ANTSPACE HK3 V6.",
-          motivoOS:                data.motivoOS  ?? "Manutenção preventiva programada.",
-          tipoOS:                  "PREVENTIVA",
-          periodicidadePreventiva: periodicidadePreventiva as never,
-          prioridade:              data.prioridade,
-          dataProgramada:          new Date(data.dataProgramada),
-          subsistema:              data.subsistema,
-          componenteTag:           data.componenteTag,
-          containerId:             data.containerId,
-          responsavelId:           data.responsavelId || undefined,
-          abertoPorId:             usuario.id,
-          // SLA: null para preventivas
+          titulo:                    tituloGerado,
+          descricao:                 data.descricao ?? "Execução do checklist preventivo conforme Manual ANTSPACE HK3 V6.",
+          motivoOS:                  data.motivoOS  ?? "Manutenção preventiva programada.",
+          tipoOS:                    "PREVENTIVA",
+          periodicidadesSelecionadas: periodicidadesSelecionadas as string[],
+          periodicidadePreventiva:   periodicidadePrincipal as never, // legado
+          prioridade:                data.prioridade,
+          dataProgramada:            new Date(data.dataProgramada),
+          dataFimProgramada:         data.dataFimProgramada ? new Date(data.dataFimProgramada) : null,
+          subsistema:                data.subsistema,
+          componenteTag:             data.componenteTag,
+          containerId:               data.containerId,
+          responsavelId:             data.responsavelId || undefined,
+          abertoPorId:               usuario.id,
           dataEmissaoAxia: null,
           prazoSLAHoras:   null,
           dataLimiteSLA:   null,
@@ -155,7 +174,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Gera apenas os itens do checklist da periodicidade correta
+      // Insere o checklist unificado (sem duplicados, já filtrado em itensPorMultiplasPeriodicidades)
       if (itensChecklist.length > 0) {
         await tx.checklistItemOS.createMany({
           data: itensChecklist.map((item) => ({
@@ -165,6 +184,7 @@ export async function POST(req: NextRequest) {
             periodicidade: item.periodicidade,
             subsistema:    item.subsistema,
             referencia:    item.referencia,
+            assetId:       assetBindings.get(item.id)?.assetId ?? null,
             status:        "PENDENTE",
           })),
         });
@@ -174,7 +194,7 @@ export async function POST(req: NextRequest) {
         data: {
           osId:       novaOS.id,
           statusPara: "ABERTA",
-          observacao: `OS preventiva aberta — periodicidade: ${PERIODICIDADE_LABEL[periodicidadePreventiva]} (${itensChecklist.length} itens de checklist)`,
+          observacao: `OS preventiva aberta — periodicidades: ${labelPeriods} (${itensChecklist.length} itens de checklist)`,
           usuarioId:  usuario.id,
         },
       });

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calcularSLA } from "@/lib/sla-manual";
 import { z } from "zod";
+import { getChecklistItemsWithAssets } from "@/lib/assets";
 
 const atualizarOSSchema = z.object({
   status:         z.enum(["ABERTA", "EM_ANDAMENTO", "AGUARDANDO_PECA", "PAUSADA", "CONCLUIDA", "CANCELADA"]).optional(),
@@ -34,18 +35,19 @@ export async function GET(
         orderBy: { createdAt: "desc" },
       },
       anexos:        true,
-      checklistItems: { orderBy: { itemId: "asc" } },
     },
   });
 
   if (!os) return NextResponse.json({ error: "OS não encontrada" }, { status: 404 });
+
+  const checklistItems = await getChecklistItemsWithAssets(os.id);
 
   // SLA só existe para corretivas
   const sla = os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
     ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
     : null;
 
-  return NextResponse.json({ os, sla });
+  return NextResponse.json({ os: { ...os, checklistItems }, sla });
 }
 
 export async function PATCH(

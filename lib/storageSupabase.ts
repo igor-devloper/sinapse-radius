@@ -23,8 +23,8 @@ async function ensureBucket() {
   if (err) throw new Error(`Supabase createBucket: ${err.message}`);
 }
 
-export async function uploadAnexoOS(args: {
-  osId: string;
+export async function uploadArquivoSupabase(args: {
+  folder: string;
   file: Buffer;
   filename: string;
   contentType: string;
@@ -36,7 +36,7 @@ export async function uploadAnexoOS(args: {
   await ensureBucket();
 
   const filename = safeName(args.filename);
-  const objectPath = `os/${args.osId}/${Date.now()}-${filename}`;
+  const objectPath = `${args.folder}/${Date.now()}-${filename}`;
 
   const { error } = await supabaseAdmin.storage.from(BUCKET).upload(objectPath, args.file, {
     contentType: args.contentType,
@@ -48,6 +48,34 @@ export async function uploadAnexoOS(args: {
   const src = `supabase://${BUCKET}/${objectPath}`;
 
   return { src, publicUrl, path: objectPath };
+}
+
+export async function uploadAnexoOS(args: {
+  osId: string;
+  file: Buffer;
+  filename: string;
+  contentType: string;
+}): Promise<{ src: string; publicUrl: string; path: string }> {
+  return uploadArquivoSupabase({
+    folder: `os/${args.osId}`,
+    file: args.file,
+    filename: args.filename,
+    contentType: args.contentType,
+  });
+}
+
+export async function uploadFotoAsset(args: {
+  assetId: string;
+  file: Buffer;
+  filename: string;
+  contentType: string;
+}): Promise<{ src: string; publicUrl: string; path: string }> {
+  return uploadArquivoSupabase({
+    folder: `assets/${args.assetId}`,
+    file: args.file,
+    filename: args.filename,
+    contentType: args.contentType,
+  });
 }
 
 export async function deleteAnexoOS(path: string) {

@@ -2,7 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calcularSLA } from "@/lib/sla-manual";
-import { subDays } from "date-fns";
+import { subDays, startOfMonth, endOfMonth } from "date-fns";
 
 // GET /api/dashboard — Métricas para a home
 export async function GET() {
@@ -11,6 +11,8 @@ export async function GET() {
 
   const agora = new Date();
   const ha30dias = subDays(agora, 30);
+  const inicioMes = startOfMonth(agora);
+  const fimMes = endOfMonth(agora);
 
   const [
     totalOS,
@@ -22,6 +24,9 @@ export async function GET() {
     osUltimos30dias,
     osVencendoEm30dias,
     todasOSComData,
+    // NOVO: OS preventivas do mês atual (visitas agendadas)
+    visitasMes,
+    visitasConcluidasMes,
   ] = await Promise.all([
     prisma.ordemServico.count(),
     prisma.ordemServico.count({ where: { status: "ABERTA" } }),
@@ -30,7 +35,6 @@ export async function GET() {
     prisma.ordemServico.count({ where: { status: "CANCELADA" } }),
     prisma.ordemServico.count({ where: { prioridade: "CRITICA", status: { notIn: ["CONCLUIDA", "CANCELADA"] } } }),
     prisma.ordemServico.count({ where: { createdAt: { gte: ha30dias } } }),
-    // OS corretivas que vencem nos próximos 30 dias
     prisma.ordemServico.count({
       where: {
         tipoOS: "CORRETIVA",
@@ -38,7 +42,6 @@ export async function GET() {
         status: { notIn: ["CONCLUIDA", "CANCELADA"] },
       },
     }),
-    // Para calcular quantas estão com SLA vencido (apenas corretivas)
     prisma.ordemServico.findMany({
       where: {
         tipoOS: "CORRETIVA",
@@ -47,6 +50,21 @@ export async function GET() {
         tipoAtividadeCorretiva: { not: null },
       },
       select: { id: true, dataEmissaoAxia: true, tipoAtividadeCorretiva: true },
+    }),
+    // NOVO: visitas (OS preventivas) agendadas no mês atual
+    prisma.ordemServico.count({
+      where: {
+        tipoOS: "PREVENTIVA",
+        dataProgramada: { gte: inicioMes, lte: fimMes },
+      },
+    }),
+    // NOVO: visitas concluídas no mês atual
+    prisma.ordemServico.count({
+      where: {
+        tipoOS: "PREVENTIVA",
+        status: "CONCLUIDA",
+        dataProgramada: { gte: inicioMes, lte: fimMes },
+      },
     }),
   ]);
 
@@ -57,13 +75,11 @@ export async function GET() {
       calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva).vencido
   ).length;
 
-  // OS por tipoOS
   const porTipo = await prisma.ordemServico.groupBy({
     by: ["tipoOS"],
     _count: { id: true },
   });
 
-  // OS por status
   const porStatus = await prisma.ordemServico.groupBy({
     by: ["status"],
     _count: { id: true },
@@ -79,9 +95,10 @@ export async function GET() {
     take: 5,
   });
 
-  // OS próximas (dataProgramada nos próximos 7 dias)
+  // Próximas visitas (OS preventivas nos próximos 7 dias)
   const osProximas = await prisma.ordemServico.findMany({
     where: {
+      tipoOS: "PREVENTIVA",
       dataProgramada: { gte: agora, lte: subDays(agora, -7) },
       status: { notIn: ["CONCLUIDA", "CANCELADA"] },
     },
@@ -103,11 +120,21 @@ export async function GET() {
       osUltimos30dias,
       osVencendoEm30dias,
       osSLAVencido,
+      // NOVO: métricas de visitas do mês
+      visitasMes,
+      visitasConcluidasMes,
+      progressoVisitas: visitasMes > 0 ? Math.round((visitasConcluidasMes / visitasMes) * 100) : 0,
     },
     porTipo,
     porStatus,
     ultimasOS: ultimasOS.map((os) => ({
       ...os,
+      // Periodicidades para display (novo modelo + legado)
+      periodicidades: os.periodicidadesSelecionadas?.length
+        ? os.periodicidadesSelecionadas
+        : os.periodicidadePreventiva
+          ? [os.periodicidadePreventiva]
+          : [],
       sla:
         os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
           ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
@@ -115,10 +142,12 @@ export async function GET() {
     })),
     osProximas: osProximas.map((os) => ({
       ...os,
-      sla:
-        os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
-          ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
-          : null,
+      periodicidades: os.periodicidadesSelecionadas?.length
+        ? os.periodicidadesSelecionadas
+        : os.periodicidadePreventiva
+          ? [os.periodicidadePreventiva]
+          : [],
+      sla: null,
     })),
   });
 }

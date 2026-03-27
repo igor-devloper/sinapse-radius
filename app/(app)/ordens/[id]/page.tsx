@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
   Calendar, Clock, CheckCircle2, AlertTriangle, FileText,
-  Tag, Server, Cpu, ArrowLeft, CalendarRange, Layers,
+  Tag, Server, Cpu, ArrowLeft, CalendarRange, Layers, Package2,
 } from "lucide-react";
 import { AtualizarStatusOS } from "@/components/os/atualizar-status";
 import { ComentariosOS } from "@/components/os/comentarios";
@@ -19,27 +19,21 @@ import { DownloadRelatorioButton } from "@/components/os/download-relatorio-butt
 import { EditarDatasOS } from "@/components/os/editar-datas-os";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
-import { format } from "date-fns";
-import { ptBR } from "date-fns/locale";
+import Image from "next/image";
 
 const prioridadeMap: Record<string, { label: string; class: string; dot: string }> = {
   CRITICA: { label: "Crítica", class: "bg-red-100 text-red-700 border-red-200",         dot: "bg-red-500" },
   ALTA:    { label: "Alta",    class: "bg-orange-100 text-orange-700 border-orange-200", dot: "bg-orange-400" },
-  MEDIA:   { label: "Média",   class: "bg-yellow-100 text-yellow-700 border-yellow-200", dot: "bg-yellow-400" },
-  BAIXA:   { label: "Baixa",   class: "bg-green-100 text-green-700 border-green-200",   dot: "bg-green-500" },
+  MEDIA:   { label: "Média",  class: "bg-yellow-100 text-yellow-700 border-yellow-200",  dot: "bg-yellow-400" },
+  BAIXA:   { label: "Baixa",  class: "bg-green-100 text-green-700 border-green-200",    dot: "bg-green-500" },
 };
-const statusMap: Record<string, { label: string; class: string }> = {
-  ABERTA:          { label: "Aberta",        class: "bg-orange-100 text-orange-700 border-orange-200" },
-  EM_ANDAMENTO:    { label: "Em andamento",  class: "bg-blue-100 text-blue-700 border-blue-200" },
-  AGUARDANDO_PECA: { label: "Aguard. peça", class: "bg-yellow-100 text-yellow-700 border-yellow-200" },
-  PAUSADA:         { label: "Pausada",       class: "bg-gray-100 text-gray-600 border-gray-200" },
-  CONCLUIDA:       { label: "Concluída",     class: "bg-green-100 text-green-700 border-green-200" },
-  CANCELADA:       { label: "Cancelada",     class: "bg-red-100 text-red-600 border-red-200" },
-};
-
-const TIPO_OS_LABEL: Record<string, string> = {
-  PREVENTIVA: "Preventiva",
-  CORRETIVA: "Corretiva",
+const statusMap: Record<string, { label: string; class: string; dot: string }> = {
+  ABERTA:          { label: "Aberta",        class: "bg-orange-100 text-orange-700 border-orange-200",   dot: "bg-orange-400" },
+  EM_ANDAMENTO:    { label: "Em andamento",  class: "bg-blue-100 text-blue-700 border-blue-200",         dot: "bg-blue-500" },
+  AGUARDANDO_PECA: { label: "Aguard. peça", class: "bg-yellow-100 text-yellow-700 border-yellow-200",    dot: "bg-yellow-400" },
+  PAUSADA:         { label: "Pausada",       class: "bg-gray-100 text-gray-600 border-gray-200",         dot: "bg-gray-400" },
+  CONCLUIDA:       { label: "Concluída",     class: "bg-green-100 text-green-700 border-green-200",      dot: "bg-green-500" },
+  CANCELADA:       { label: "Cancelada",     class: "bg-red-100 text-red-600 border-red-200",            dot: "bg-red-400" },
 };
 
 export default async function OSDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -63,7 +57,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
       },
       anexos: { orderBy: { createdAt: "asc" } },
       checklistItems: {
-        include: { asset: { select: { nome: true, codigo: true, fotoUrl: true } } },
+        include: { asset: { select: { id: true, nome: true, codigo: true, fotoUrl: true } } },
         orderBy: [{ subsistema: "asc" }, { itemId: "asc" }],
       },
     },
@@ -82,13 +76,22 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
   const isPreventiva = os.tipoOS === "PREVENTIVA";
   const isConcluida = os.status === "CONCLUIDA";
 
-  // Periodicidades: novo modelo (array) com fallback para modelo legado
   const periodicidades: string[] =
     (os.periodicidadesSelecionadas && os.periodicidadesSelecionadas.length > 0)
       ? os.periodicidadesSelecionadas
       : os.periodicidadePreventiva
         ? [os.periodicidadePreventiva]
         : [];
+
+  // Distinct assets from checklist items
+  const assetsMap = new Map<string, { id: string; nome: string; codigo: string; fotoUrl: string | null; itens: string[] }>();
+  for (const item of os.checklistItems) {
+    if (!item.asset) continue;
+    const existing = assetsMap.get(item.asset.id);
+    if (existing) { existing.itens.push(item.itemId); }
+    else { assetsMap.set(item.asset.id, { ...item.asset, itens: [item.itemId] }); }
+  }
+  const assetsDistintos = Array.from(assetsMap.values());
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
@@ -102,85 +105,118 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
         <span className="text-sm font-mono text-gray-600">{os.numero}</span>
       </div>
 
-      {/* Header */}
-      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
-        <div className="flex items-start justify-between gap-4">
-          <div className="space-y-2 min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${status.class}`}>{status.label}</span>
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium border flex items-center gap-1 ${prioridade.class}`}>
-                <span className={`w-1.5 h-1.5 rounded-full ${prioridade.dot}`} />
-                {prioridade.label}
-              </span>
-              <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${isPreventiva ? "bg-purple-50 text-purple-700 border-purple-100" : "bg-orange-50 text-orange-700 border-orange-100"}`}>
-                {TIPO_OS_LABEL[os.tipoOS] ?? os.tipoOS}
-              </span>
+      {/* ── Header ──────────────────────────────────────────────────────── */}
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+        {/* Top color stripe */}
+        <div className="h-1.5 w-full" style={{
+          background: os.status === "CONCLUIDA"
+            ? "linear-gradient(90deg,#22c55e,#16a34a)"
+            : os.status === "CANCELADA"
+            ? "linear-gradient(90deg,#f87171,#dc2626)"
+            : isPreventiva
+            ? "linear-gradient(90deg,#8B1FA9,#1E1B4B)"
+            : "linear-gradient(90deg,#f97316,#ea580c)"
+        }} />
 
-              {/* NOVO: Badges de periodicidades para preventivas */}
-              {isPreventiva && periodicidades.map((per) => {
-                const cor = PERIODICIDADE_COR[per] ?? { bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-200" };
-                return (
-                  <span key={per} className={cn("text-xs px-2.5 py-1 rounded-full font-semibold border flex items-center gap-1", cor.bg, cor.text, cor.border)}>
-                    {PERIODICIDADE_LABEL[per] ?? per}
-                  </span>
-                );
-              })}
-            </div>
-            <h1 className="text-2xl font-bold text-gray-900 leading-tight">{os.titulo}</h1>
-            <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
-              <span className="flex items-center gap-1.5"><Server className="w-3.5 h-3.5 text-gray-400" />{os.subsistema}</span>
-              {os.componenteTag && <span className="flex items-center gap-1.5"><Tag className="w-3.5 h-3.5 text-gray-400" />{os.componenteTag}</span>}
-              {os.containerId && <span className="flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-gray-400" />{os.containerId}</span>}
-            </div>
-          </div>
-
-          <div className="flex flex-col items-end gap-3 shrink-0">
-            {canEdit && <AtualizarStatusOS osId={os.id} statusAtual={os.status} />}
-            <DownloadRelatorioButton osId={os.id} numero={os.numero} status={os.status} />
-          </div>
-        </div>
-
-        {/* Banner: multi-periodicidade (só preventivas com 2+ periodicidades) */}
-        {isPreventiva && periodicidades.length > 1 && (
-          <div className="mt-4 flex items-start gap-3 bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
-            <Layers className="w-5 h-5 text-violet-500 mt-0.5 shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-violet-800">
-                Visita com {periodicidades.length} periodicidades
-              </p>
-              <div className="flex gap-1.5 flex-wrap mt-1.5">
-                {periodicidades.map((per) => {
+        <div className="p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div className="space-y-3 min-w-0">
+              {/* Badges */}
+              <div className="flex flex-wrap items-center gap-2">
+                <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold border ${status.class}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${status.dot}`} />
+                  {status.label}
+                </span>
+                <span className={`inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium border ${prioridade.class}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${prioridade.dot}`} />
+                  {prioridade.label}
+                </span>
+                <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${isPreventiva ? "bg-purple-50 text-purple-700 border-purple-100" : "bg-orange-50 text-orange-700 border-orange-100"}`}>
+                  {isPreventiva ? "Preventiva" : "Corretiva"}
+                </span>
+                {isPreventiva && periodicidades.map((per) => {
                   const cor = PERIODICIDADE_COR[per] ?? { bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-200" };
                   return (
-                    <span key={per} className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full border", cor.bg, cor.text, cor.border)}>
+                    <span key={per} className={cn("text-xs px-2.5 py-1 rounded-full font-semibold border", cor.bg, cor.text, cor.border)}>
                       {PERIODICIDADE_LABEL[per] ?? per}
                     </span>
                   );
                 })}
               </div>
-              <p className="text-xs text-violet-600 mt-1">
-                O checklist abaixo reúne todos os itens de todas as periodicidades, sem duplicações.
-              </p>
-            </div>
-          </div>
-        )}
 
-        {/* Banner de conclusão */}
-        {isConcluida && (
-          <div className="mt-4 flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
-            <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-green-800">OS Concluída</p>
-              {os.dataConclusao && (
-                <p className="text-xs text-green-600">Finalizada em {formatarDataBR(os.dataConclusao)}</p>
-              )}
+              <h1 className="text-xl font-bold text-gray-900 leading-tight">{os.titulo}</h1>
+
+              <div className="flex items-center gap-3 text-sm text-gray-500 flex-wrap">
+                <span className="flex items-center gap-1.5"><Server className="w-3.5 h-3.5 text-gray-400" />{os.subsistema}</span>
+                {os.componenteTag && <span className="flex items-center gap-1.5"><Tag className="w-3.5 h-3.5 text-gray-400" />{os.componenteTag}</span>}
+                {os.containerId && <span className="flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-gray-400" />{os.containerId}</span>}
+              </div>
             </div>
-            <p className="ml-auto text-xs text-green-600 font-medium">Relatório PDF disponível →</p>
+
+            <div className="flex flex-col items-end gap-3 shrink-0">
+              {canEdit && <AtualizarStatusOS osId={os.id} statusAtual={os.status} />}
+              <DownloadRelatorioButton osId={os.id} numero={os.numero} status={os.status} />
+            </div>
           </div>
-        )}
+
+          {/* ── Ativos da OS — destaque visual ────────────────────────── */}
+          {/* {assetsDistintos.length > 0 && (
+            <div className="mt-5 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "linear-gradient(135deg,#1E1B4B,#8B1FA9)" }}>
+                  <Package2 className="w-3.5 h-3.5 text-white" />
+                </div>
+                <p className="text-sm font-bold text-violet-900">
+                  {assetsDistintos.length} ativo{assetsDistintos.length !== 1 ? "s" : ""} nesta OS
+                </p>
+                <span className="ml-auto text-xs text-violet-500 font-medium">Clique para detalhar →</span>
+              </div>
+              <div className="flex flex-wrap gap-3">
+                {assetsDistintos.map((asset) => (
+                  <AssetCard key={asset.id} asset={asset} />
+                ))}
+              </div>
+            </div>
+          )} */}
+
+          {/* Multi-periodicidade banner */}
+          {isPreventiva && periodicidades.length > 1 && (
+            <div className="mt-4 flex items-start gap-3 bg-violet-50 border border-violet-200 rounded-xl px-4 py-3">
+              <Layers className="w-5 h-5 text-violet-500 mt-0.5 shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-violet-800">Visita com {periodicidades.length} periodicidades</p>
+                <div className="flex gap-1.5 flex-wrap mt-1.5">
+                  {periodicidades.map((per) => {
+                    const cor = PERIODICIDADE_COR[per] ?? { bg: "bg-gray-100", text: "text-gray-700", border: "border-gray-200" };
+                    return (
+                      <span key={per} className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full border", cor.bg, cor.text, cor.border)}>
+                        {PERIODICIDADE_LABEL[per] ?? per}
+                      </span>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-violet-600 mt-1">
+                  O checklist abaixo reúne todos os itens de todas as periodicidades, sem duplicações.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Conclusão banner */}
+          {isConcluida && (
+            <div className="mt-4 flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3">
+              <CheckCircle2 className="w-5 h-5 text-green-600 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-green-800">OS Concluída</p>
+                {os.dataConclusao && <p className="text-xs text-green-600">Finalizada em {formatarDataBR(os.dataConclusao)}</p>}
+              </div>
+              <p className="ml-auto text-xs text-green-600 font-medium">Relatório PDF disponível →</p>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Grid */}
+      {/* ── Grid ────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Coluna principal */}
         <div className="lg:col-span-2 space-y-5">
@@ -210,9 +246,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                     <Separator />
                     <div>
                       <p className="text-xs font-semibold text-gray-400 mb-1.5 uppercase tracking-wider">Tipo de ocorrência</p>
-                      <p className="text-sm text-gray-700">
-                        {ATIVIDADE_CORRETIVA_LABEL[os.tipoAtividadeCorretiva] ?? os.tipoAtividadeCorretiva}
-                      </p>
+                      <p className="text-sm text-gray-700">{ATIVIDADE_CORRETIVA_LABEL[os.tipoAtividadeCorretiva] ?? os.tipoAtividadeCorretiva}</p>
                     </div>
                   </>
                 )}
@@ -248,23 +282,15 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                   <Separator />
                 </>
               )}
-              <InfoRow
-                icon={Calendar}
-                label="Início da visita"
-                value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"}
-              />
+              <InfoRow icon={Calendar} label="Início da visita" value={os.dataProgramada ? formatarDataCurta(os.dataProgramada) : "—"} />
               {os.dataFimProgramada && (
-                <InfoRow
-                  icon={Calendar}
-                  label="Fim da visita"
-                  value={formatarDataCurta(os.dataFimProgramada)}
-                />
+                <InfoRow icon={Calendar} label="Fim da visita" value={formatarDataCurta(os.dataFimProgramada)} />
               )}
               <InfoRow icon={Calendar} label="Abertura sistema" value={formatarDataBR(os.createdAt)} />
             </CardContent>
           </Card>
 
-          {/* Execução real */}
+          {/* Execução */}
           {canEdit ? (
             <Card className="border-gray-100 shadow-sm rounded-2xl">
               <CardHeader className="pb-2">
@@ -274,12 +300,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <EditarDatasOS
-                  osId={os.id}
-                  dataInicio={os.dataInicio}
-                  dataConclusao={os.dataConclusao}
-                  status={os.status}
-                />
+                <EditarDatasOS osId={os.id} dataInicio={os.dataInicio} dataConclusao={os.dataConclusao} status={os.status} />
               </CardContent>
             </Card>
           ) : (
@@ -288,8 +309,8 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                 <CardTitle className="text-sm font-semibold text-gray-700">Execução real</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <InfoRow icon={Clock}        label="Início real" value={os.dataInicio ? formatarDataBR(os.dataInicio) : "—"} />
-                <InfoRow icon={CheckCircle2} label="Conclusão"   value={os.dataConclusao ? formatarDataBR(os.dataConclusao) : "—"} highlight={!!os.dataConclusao} />
+                <InfoRow icon={Clock} label="Início real" value={os.dataInicio ? formatarDataBR(os.dataInicio) : "—"} />
+                <InfoRow icon={CheckCircle2} label="Conclusão" value={os.dataConclusao ? formatarDataBR(os.dataConclusao) : "—"} highlight={!!os.dataConclusao} />
               </CardContent>
             </Card>
           )}
@@ -301,9 +322,9 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
             </CardHeader>
             <CardContent className="space-y-3">
               <div>
-                <p className="text-xs text-gray-400 mb-1">Aberto por</p>
+                <p className="text-xs text-gray-400 mb-1.5">Aberto por</p>
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: "#1E1B4B" }}>
+                  <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: "#1E1B4B" }}>
                     {os.abertoPor.nome.charAt(0)}
                   </div>
                   <p className="text-sm font-medium text-gray-800">{os.abertoPor.nome}</p>
@@ -311,12 +332,18 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
               </div>
               <Separator />
               <div>
-                <p className="text-xs text-gray-400 mb-1">Responsável técnico</p>
+                <p className="text-xs text-gray-400 mb-1.5">Responsável técnico</p>
                 {os.responsavel ? (
                   <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white" style={{ background: "#8B1FA9" }}>
-                      {os.responsavel.nome.charAt(0)}
-                    </div>
+                    {os.responsavel.avatarUrl ? (
+                      <div className="relative w-7 h-7 rounded-full overflow-hidden shrink-0">
+                        <Image src={os.responsavel.avatarUrl} alt={os.responsavel.nome} fill className="object-cover" unoptimized sizes="28px" />
+                      </div>
+                    ) : (
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold text-white shrink-0" style={{ background: "#8B1FA9" }}>
+                        {os.responsavel.nome.charAt(0)}
+                      </div>
+                    )}
                     <div>
                       <p className="text-sm font-medium text-gray-800">{os.responsavel.nome}</p>
                       <p className="text-xs text-purple-600 capitalize">{os.responsavel.cargo.toLowerCase()}</p>
@@ -331,6 +358,31 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
 
           <HistoricoTimeline historico={os.historicoOS} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Asset Card (client-side dialog trigger wrapper) ─────────────────────────
+// We render a server component that imports the client card
+function AssetCard({ asset }: {
+  asset: { id: string; nome: string; codigo: string; fotoUrl: string | null; itens: string[] };
+}) {
+  return (
+    <div className="flex items-center gap-3 bg-white rounded-xl border border-violet-100 px-3 py-2.5 min-w-[180px] max-w-[240px] shadow-sm">
+      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-violet-100 bg-violet-50">
+        {asset.fotoUrl ? (
+          <Image src={asset.fotoUrl} alt={asset.nome} fill className="object-cover" sizes="40px" unoptimized />
+        ) : (
+          <div className="flex h-full w-full items-center justify-center">
+            <Package2 className="h-5 w-5 text-violet-300" />
+          </div>
+        )}
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-bold text-gray-900 truncate leading-tight">{asset.nome}</p>
+        <p className="text-[11px] font-mono text-violet-600 mt-0.5">{asset.codigo}</p>
+        <p className="text-[10px] text-gray-400 mt-0.5">{asset.itens.length} item{asset.itens.length !== 1 ? "s" : ""}</p>
       </div>
     </div>
   );

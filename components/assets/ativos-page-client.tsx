@@ -5,25 +5,19 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import {
-  Search,
-  Plus,
-  Loader2,
-  Pencil,
-  Trash2,
-  Package2,
-  RefreshCw,
-  ImageIcon,
-  Link2,
-  ChevronDown,
-  ChevronUp,
-  ShieldCheck,
+  Search, Plus, Loader2, Pencil, Trash2, Package2,
+  RefreshCw, ImageIcon, Link2, ChevronDown, ChevronUp,
+  ShieldCheck, LayoutGrid, Table2, Download, X, Check, AlertTriangle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
+} from "@/components/ui/dialog";
 import { CHECKLIST_PREVENTIVA } from "@/lib/checklist-preventiva";
+import { cn } from "@/lib/utils";
 
 type AssetLinkRecord = {
   checklistItemId: string;
@@ -32,7 +26,6 @@ type AssetLinkRecord = {
   itemSubsistema: string;
   itemPeriodicidade: string;
 };
-
 type AssetRecord = {
   id: string;
   nome: string;
@@ -43,128 +36,109 @@ type AssetRecord = {
   checklistLinks: AssetLinkRecord[];
 };
 
-const CHECKLIST_GROUPS = CHECKLIST_PREVENTIVA.reduce<Record<string, typeof CHECKLIST_PREVENTIVA>>((acc, item) => {
-  (acc[item.subsistema] ??= []).push(item);
-  return acc;
-}, {});
+const CHECKLIST_GROUPS = CHECKLIST_PREVENTIVA.reduce<Record<string, typeof CHECKLIST_PREVENTIVA>>(
+  (acc, item) => { (acc[item.subsistema] ??= []).push(item); return acc; }, {}
+);
+
+const PRIORIDADE_MAP: Record<string, { label: string; class: string }> = {
+  CRITICA: { label: "Crítica", class: "bg-red-100 text-red-700 border-red-200" },
+  ALTA:    { label: "Alta",    class: "bg-orange-100 text-orange-700 border-orange-200" },
+  MEDIA:   { label: "Média",  class: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  BAIXA:   { label: "Baixa",  class: "bg-green-100 text-green-700 border-green-200" },
+};
+
+function inferPrioridade(links: AssetLinkRecord[]): string {
+  const ps = links.map((l) => l.itemPeriodicidade);
+  if (ps.includes("Anual") || ps.includes("A cada 1-2 anos")) return "ALTA";
+  if (ps.includes("Semestral") || ps.includes("Trimestral")) return "MEDIA";
+  if (ps.includes("2 meses")) return "MEDIA";
+  return "BAIXA";
+}
 
 function formatDate(value: string | Date) {
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return "-";
-  return new Intl.DateTimeFormat("pt-BR", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-  }).format(date);
+  return new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric" }).format(date);
 }
 
-function AssetThumbnail({ src, alt }: { src: string | null; alt: string }) {
+function AssetThumbnail({ src, alt, size = "md" }: { src: string | null; alt: string; size?: "sm" | "md" | "lg" }) {
+  const sizes = { sm: "h-9 w-9", md: "h-14 w-14", lg: "h-20 w-20" };
   return (
-    <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border bg-muted/40">
+    <div className={cn("relative shrink-0 overflow-hidden rounded-xl border bg-muted/40", sizes[size])}>
       {src ? (
         <Image src={src} alt={alt} fill className="object-cover" sizes="80px" unoptimized />
       ) : (
         <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-          <ImageIcon className="h-6 w-6" />
+          <ImageIcon className={size === "lg" ? "h-6 w-6" : "h-4 w-4"} />
         </div>
       )}
     </div>
   );
 }
 
-function ChecklistSelector({
-  value,
-  onChange,
-}: {
-  value: string[];
-  onChange: (next: string[]) => void;
-}) {
+function ChecklistSelector({ value, onChange }: { value: string[]; onChange: (next: string[]) => void }) {
   const [query, setQuery] = React.useState("");
-  const [open, setOpen] = React.useState<Record<string, boolean>>(() => {
-    const state: Record<string, boolean> = {};
-    Object.keys(CHECKLIST_GROUPS).forEach((group) => {
-      state[group] = true;
-    });
-    return state;
+  const [openGroups, setOpenGroups] = React.useState<Record<string, boolean>>(() => {
+    const s: Record<string, boolean> = {};
+    Object.keys(CHECKLIST_GROUPS).forEach((g) => { s[g] = true; });
+    return s;
   });
-
   const selected = React.useMemo(() => new Set(value), [value]);
 
   function toggle(itemId: string) {
-    if (selected.has(itemId)) {
-      onChange(value.filter((id) => id !== itemId));
-      return;
-    }
-    onChange([...value, itemId]);
+    onChange(selected.has(itemId) ? value.filter((id) => id !== itemId) : [...value, itemId]);
   }
-
   const q = query.trim().toLowerCase();
 
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <Label>Vincular ao checklist</Label>
-          <p className="text-xs text-muted-foreground">
-            O ativo será herdado automaticamente pela OS quando o item selecionado entrar na visita preventiva.
-          </p>
+          <Label className="text-xs font-semibold text-gray-700">Vincular ao checklist preventivo</Label>
+          <p className="text-xs text-muted-foreground mt-0.5">O ativo é herdado automaticamente na OS quando o item entrar na visita.</p>
         </div>
-        <Badge variant="secondary" className="rounded-lg px-2.5 py-1 text-[11px]">
+        <Badge variant="secondary" className="rounded-lg px-2.5 py-1 text-[11px] shrink-0">
           {value.length} vínculo{value.length === 1 ? "" : "s"}
         </Badge>
       </div>
-
       <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Buscar item do checklist"
-          className="pl-9"
-        />
+        <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar item…" className="pl-9 h-9 text-sm" />
       </div>
-
-      <div className="max-h-80 overflow-y-auto rounded-xl border border-border/60 bg-background">
+      <div className="max-h-72 overflow-y-auto rounded-xl border border-border/60 bg-background">
         {Object.entries(CHECKLIST_GROUPS).map(([group, items]) => {
           const filtered = items.filter((item) => {
             if (!q) return true;
-            const blob = `${item.id} ${item.descricao} ${item.periodicidade} ${item.subsistema}`.toLowerCase();
-            return blob.includes(q);
+            return `${item.id} ${item.descricao} ${item.periodicidade}`.toLowerCase().includes(q);
           });
           if (filtered.length === 0) return null;
-
-          const isOpen = open[group] ?? true;
+          const isOpen = openGroups[group] ?? true;
           return (
             <div key={group} className="border-b last:border-b-0">
-              <button
-                type="button"
-                onClick={() => setOpen((prev) => ({ ...prev, [group]: !isOpen }))}
-                className="flex w-full items-center justify-between bg-muted/40 px-3 py-2 text-left text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-              >
+              <button type="button"
+                onClick={() => setOpenGroups((p) => ({ ...p, [group]: !isOpen }))}
+                className="flex w-full items-center justify-between bg-muted/40 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 <span>{group}</span>
-                {isOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                {isOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
               </button>
-
               {isOpen && (
                 <div className="divide-y">
                   {filtered.map((item) => {
                     const checked = selected.has(item.id);
                     return (
-                      <label key={item.id} className="flex cursor-pointer items-start gap-3 px-3 py-3 hover:bg-muted/30">
-                        <input
-                          type="checkbox"
-                          className="mt-1 h-4 w-4 rounded border-gray-300"
-                          checked={checked}
-                          onChange={() => toggle(item.id)}
-                        />
+                      <label key={item.id}
+                        className={cn("flex cursor-pointer items-start gap-3 px-3 py-2.5 hover:bg-muted/30 transition-colors", checked && "bg-violet-50/60")}>
+                        <div className={cn("mt-0.5 h-4 w-4 rounded flex items-center justify-center border shrink-0 transition-colors",
+                          checked ? "bg-violet-600 border-violet-600" : "border-gray-300")}>
+                          {checked && <Check className="h-3 w-3 text-white" />}
+                          <input type="checkbox" className="sr-only" checked={checked} onChange={() => toggle(item.id)} />
+                        </div>
                         <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-1.5">
                             <span className="font-mono text-[11px] font-semibold text-violet-700">{item.id}</span>
-                            <Badge variant="outline" className="rounded-md px-2 py-0 text-[10px] font-medium">
-                              {item.periodicidade}
-                            </Badge>
+                            <Badge variant="outline" className="rounded-md px-1.5 py-0 text-[10px] font-medium">{item.periodicidade}</Badge>
                           </div>
-                          <p className="mt-1 text-sm text-foreground">{item.descricao}</p>
+                          <p className="mt-0.5 text-xs text-foreground leading-snug">{item.descricao}</p>
                         </div>
                       </label>
                     );
@@ -179,41 +153,277 @@ function ChecklistSelector({
   );
 }
 
-export function AtivosPageClient({
-  initialAssets,
-  canManage,
+function AssetFormFields({
+  nome, setNome, codigo, setCodigo, file, setFile,
+  checklistIds, setChecklistIds, fotoPreviewUrl, currentFotoUrl, isEdit,
 }: {
-  initialAssets: AssetRecord[];
-  canManage: boolean;
+  nome: string; setNome: (v: string) => void;
+  codigo: string; setCodigo: (v: string) => void;
+  file: File | null; setFile: (f: File | null) => void;
+  checklistIds: string[]; setChecklistIds: (ids: string[]) => void;
+  fotoPreviewUrl: string | null;
+  currentFotoUrl?: string | null;
+  isEdit?: boolean;
 }) {
+  const previewSrc = fotoPreviewUrl ?? currentFotoUrl ?? null;
+  return (
+    <div className="space-y-5">
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label htmlFor="af-nome" className="text-xs font-semibold text-gray-700">Nome do ativo <span className="text-red-400">*</span></Label>
+          <Input id="af-nome" placeholder="Ex.: Inversor Container A" value={nome} onChange={(e) => setNome(e.target.value)} required className="rounded-xl" />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="af-codigo" className="text-xs font-semibold text-gray-700">Código <span className="text-red-400">*</span></Label>
+          <Input id="af-codigo" placeholder="Ex.: INV-CT-A01" value={codigo} onChange={(e) => setCodigo(e.target.value)} required className="rounded-xl" />
+        </div>
+      </div>
+      <div className="space-y-2">
+        <Label className="text-xs font-semibold text-gray-700">Foto do ativo <span className="text-gray-400 font-normal">(opcional)</span></Label>
+        <div className="flex items-center gap-3">
+          {previewSrc && (
+            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border bg-muted/40">
+              <Image src={previewSrc} alt={nome || "ativo"} fill className="object-cover" sizes="56px" unoptimized />
+            </div>
+          )}
+          <label className="flex-1 flex items-center gap-2.5 rounded-xl border border-dashed border-violet-200 bg-violet-50/40 px-3 py-2.5 cursor-pointer hover:bg-violet-50 transition-colors">
+            <ImageIcon className="h-4 w-4 text-violet-400 shrink-0" />
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-violet-800">{file ? file.name : (isEdit ? "Substituir foto" : "Enviar foto")}</p>
+              <p className="text-[10px] text-violet-500">JPG, PNG, WEBP — máx 10 MB</p>
+            </div>
+            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="sr-only"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+          </label>
+          {file && (
+            <button type="button" onClick={() => setFile(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+      </div>
+      <ChecklistSelector value={checklistIds} onChange={setChecklistIds} />
+    </div>
+  );
+}
+
+function exportCSV(assets: AssetRecord[]) {
+  const headers = ["#", "Nome", "Código", "Prioridade", "Qtd Vínculos", "IDs Vinculados", "Periodicidades", "Cadastro"];
+  const rows = assets.map((a, i) => {
+    const prioridade = PRIORIDADE_MAP[inferPrioridade(a.checklistLinks)]?.label ?? "";
+    const ids = a.checklistLinks.map((l) => l.itemCodigo).join("; ");
+    const periodicidades = Array.from(new Set(a.checklistLinks.map((l) => l.itemPeriodicidade))).join(", ");
+    return [i + 1, a.nome, a.codigo, prioridade, a.checklistLinks.length, ids, periodicidades, formatDate(a.createdAt)];
+  });
+  const csv = [headers, ...rows].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ativos_${new Date().toISOString().split("T")[0]}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Spreadsheet View ─────────────────────────────────────────────────────────
+function SpreadsheetView({ assets, canManage, onEdit, onDelete, busyId }: {
+  assets: AssetRecord[]; canManage: boolean;
+  onEdit: (a: AssetRecord) => void; onDelete: (id: string, nome: string) => void; busyId: string | null;
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-100 shadow-sm overflow-hidden bg-white">
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm" style={{ minWidth: 900 }}>
+          <thead>
+            <tr className="border-b border-gray-100 bg-gray-50/70">
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-10">#</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-12"></th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Nome</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-36">Código</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-28">Prioridade</th>
+              <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 w-20">Vínculos</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Periodicidades</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-28">Cadastro</th>
+              {canManage && <th className="w-20"></th>}
+            </tr>
+          </thead>
+          <tbody>
+            {assets.map((asset, idx) => {
+              const prio = inferPrioridade(asset.checklistLinks);
+              const pMap = PRIORIDADE_MAP[prio];
+              const periodicidades = Array.from(new Set(asset.checklistLinks.map((l) => l.itemPeriodicidade)));
+              const isBusy = busyId === asset.id;
+              return (
+                <tr key={asset.id} className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors group">
+                  <td className="px-4 py-3 text-xs text-gray-400 font-mono">{String(idx + 1).padStart(2, "0")}</td>
+                  <td className="px-4 py-3"><AssetThumbnail src={asset.fotoUrl} alt={asset.nome} size="sm" /></td>
+                  <td className="px-4 py-3">
+                    <p className="font-semibold text-gray-900 text-sm">{asset.nome}</p>
+                    {asset.checklistLinks.length > 0 && (
+                      <p className="text-[11px] text-gray-400 mt-0.5 truncate max-w-[260px]">
+                        {asset.checklistLinks.slice(0, 3).map((l) => l.itemCodigo).join(", ")}
+                        {asset.checklistLinks.length > 3 && ` +${asset.checklistLinks.length - 3}`}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center rounded-lg bg-gray-100 px-2 py-1 text-xs font-mono font-medium text-gray-700">{asset.codigo}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={cn("inline-flex items-center rounded-lg px-2 py-1 text-[11px] font-semibold border", pMap.class)}>{pMap.label}</span>
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    <span className="text-sm font-bold text-gray-800">{asset.checklistLinks.length}</span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap gap-1">
+                      {periodicidades.slice(0, 3).map((p) => (
+                        <span key={p} className="rounded-md bg-violet-50 text-violet-700 px-1.5 py-0.5 text-[10px] font-medium border border-violet-100">{p}</span>
+                      ))}
+                      {periodicidades.length > 3 && <span className="text-[10px] text-gray-400">+{periodicidades.length - 3}</span>}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-400">{formatDate(asset.createdAt)}</td>
+                  {canManage && (
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button onClick={() => onEdit(asset)} className="p-1.5 rounded-lg hover:bg-violet-50 text-gray-400 hover:text-violet-600 transition-colors">
+                          <Pencil className="h-3.5 w-3.5" />
+                        </button>
+                        <button onClick={() => onDelete(asset.id, asset.nome)} disabled={isBusy} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                          {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                        </button>
+                      </div>
+                    </td>
+                  )}
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Card View ─────────────────────────────────────────────────────────────────
+function CardView({ assets, canManage, onEdit, onDelete, busyId }: {
+  assets: AssetRecord[]; canManage: boolean;
+  onEdit: (a: AssetRecord) => void; onDelete: (id: string, nome: string) => void; busyId: string | null;
+}) {
+  return (
+    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {assets.map((asset) => {
+        const prio = inferPrioridade(asset.checklistLinks);
+        const pMap = PRIORIDADE_MAP[prio];
+        const isBusy = busyId === asset.id;
+        const periodicidades = Array.from(new Set(asset.checklistLinks.map((l) => l.itemPeriodicidade)));
+        return (
+          <div key={asset.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
+            <div className="flex items-start gap-3 p-4 pb-3">
+              <AssetThumbnail src={asset.fotoUrl} alt={asset.nome} size="md" />
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-gray-900 leading-tight">{asset.nome}</p>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className="rounded-lg bg-gray-100 px-2 py-0.5 text-xs font-mono text-gray-600">{asset.codigo}</span>
+                      <span className={cn("rounded-lg px-2 py-0.5 text-[11px] font-semibold border", pMap.class)}>{pMap.label}</span>
+                    </div>
+                  </div>
+                  {canManage && (
+                    <div className="flex gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button onClick={() => onEdit(asset)} className="p-1.5 rounded-lg hover:bg-violet-50 text-gray-400 hover:text-violet-600 transition-colors">
+                        <Pencil className="h-3.5 w-3.5" />
+                      </button>
+                      <button onClick={() => onDelete(asset.id, asset.nome)} disabled={isBusy} className="p-1.5 rounded-lg hover:bg-red-50 text-gray-400 hover:text-red-500 transition-colors">
+                        {isBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div className="mx-4 mb-4 rounded-xl border border-gray-100 bg-gray-50/60 p-3">
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-gray-500 mb-2">
+                <Link2 className="h-3 w-3 text-violet-500" />
+                {asset.checklistLinks.length > 0 ? `${asset.checklistLinks.length} item${asset.checklistLinks.length !== 1 ? "s" : ""} vinculados` : "Sem vínculos"}
+              </div>
+              {asset.checklistLinks.length === 0 ? (
+                <p className="text-xs text-gray-400 italic">Nenhum item vinculado.</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {asset.checklistLinks.slice(0, 3).map((link) => (
+                    <div key={link.checklistItemId} className="flex items-center gap-2">
+                      <span className="font-mono text-[10px] font-semibold text-violet-600 shrink-0 w-12">{link.itemCodigo}</span>
+                      <span className="text-[11px] text-gray-600 truncate flex-1">{link.itemDescricao}</span>
+                      <span className="text-[10px] text-violet-400 shrink-0">{link.itemPeriodicidade}</span>
+                    </div>
+                  ))}
+                  {asset.checklistLinks.length > 3 && <p className="text-[11px] text-gray-400 pt-1">+{asset.checklistLinks.length - 3} mais</p>}
+                </div>
+              )}
+              {periodicidades.length > 0 && (
+                <div className="flex flex-wrap gap-1 mt-2 pt-2 border-t border-gray-100">
+                  {periodicidades.map((p) => (
+                    <span key={p} className="rounded-md bg-violet-50 text-violet-700 px-1.5 py-0.5 text-[10px] font-medium border border-violet-100">{p}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-4 py-2.5 border-t border-gray-100 flex items-center justify-between">
+              <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium">
+                <ShieldCheck className="h-3 w-3" /> Herda para OS
+              </div>
+              <p className="text-[11px] text-gray-400">{formatDate(asset.createdAt)}</p>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main ──────────────────────────────────────────────────────────────────────
+export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: AssetRecord[]; canManage: boolean }) {
   const router = useRouter();
   const [assets, setAssets] = React.useState<AssetRecord[]>(initialAssets);
   const [query, setQuery] = React.useState("");
-  const [nome, setNome] = React.useState("");
-  const [codigo, setCodigo] = React.useState("");
-  const [file, setFile] = React.useState<File | null>(null);
-  const [selectedChecklistIds, setSelectedChecklistIds] = React.useState<string[]>([]);
-  const [saving, setSaving] = React.useState(false);
+  const [viewMode, setViewMode] = React.useState<"table" | "cards">("table");
+  const [filterPrioridade, setFilterPrioridade] = React.useState("");
   const [refreshing, setRefreshing] = React.useState(false);
-  const [editingId, setEditingId] = React.useState<string | null>(null);
-  const [editNome, setEditNome] = React.useState("");
-  const [editCodigo, setEditCodigo] = React.useState("");
-  const [editFile, setEditFile] = React.useState<File | null>(null);
-  const [editChecklistIds, setEditChecklistIds] = React.useState<string[]>([]);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [saving, setSaving] = React.useState(false);
+
+  // Create dialog
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [cNome, setCNome] = React.useState("");
+  const [cCodigo, setCCodigo] = React.useState("");
+  const [cFile, setCFile] = React.useState<File | null>(null);
+  const [cIds, setCIds] = React.useState<string[]>([]);
+  const [cPreview, setCPreview] = React.useState<string | null>(null);
+
+  // Edit dialog
+  const [editOpen, setEditOpen] = React.useState(false);
+  const [editAsset, setEditAsset] = React.useState<AssetRecord | null>(null);
+  const [eNome, setENome] = React.useState("");
+  const [eCodigo, setECodigo] = React.useState("");
+  const [eFile, setEFile] = React.useState<File | null>(null);
+  const [eIds, setEIds] = React.useState<string[]>([]);
+  const [ePreview, setEPreview] = React.useState<string | null>(null);
+
+  React.useEffect(() => { setCPreview(cFile ? URL.createObjectURL(cFile) : null); }, [cFile]);
+  React.useEffect(() => { setEPreview(eFile ? URL.createObjectURL(eFile) : null); }, [eFile]);
 
   const filteredAssets = React.useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return assets;
-    return assets.filter((asset) => {
-      const links = asset.checklistLinks.map((link) => `${link.itemCodigo} ${link.itemDescricao}`).join(" ").toLowerCase();
-      return (
-        asset.nome.toLowerCase().includes(q) ||
-        asset.codigo.toLowerCase().includes(q) ||
-        links.includes(q)
-      );
+    return assets.filter((a) => {
+      const matchQuery = !q || a.nome.toLowerCase().includes(q) || a.codigo.toLowerCase().includes(q) ||
+        a.checklistLinks.some((l) => `${l.itemCodigo} ${l.itemDescricao}`.toLowerCase().includes(q));
+      const matchPrio = !filterPrioridade || inferPrioridade(a.checklistLinks) === filterPrioridade;
+      return matchQuery && matchPrio;
     });
-  }, [assets, query]);
+  }, [assets, query, filterPrioridade]);
 
   async function refreshAssets(showToast = false) {
     try {
@@ -223,295 +433,223 @@ export function AtivosPageClient({
       if (!res.ok) throw new Error(data?.error || "Erro ao carregar ativos");
       setAssets(Array.isArray(data.assets) ? data.assets : []);
       router.refresh();
-      if (showToast) toast.success("Lista de ativos atualizada");
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao atualizar ativos");
-    } finally {
-      setRefreshing(false);
-    }
+      if (showToast) toast.success("Lista atualizada");
+    } catch (err: any) { toast.error(err?.message || "Erro ao atualizar"); }
+    finally { setRefreshing(false); }
   }
 
-  async function handleCreate(e: React.FormEvent<HTMLFormElement>) {
+  async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!canManage) return;
-
     try {
       setSaving(true);
       const fd = new FormData();
-      fd.append("nome", nome);
-      fd.append("codigo", codigo);
-      if (file) fd.append("file", file);
-      selectedChecklistIds.forEach((id) => fd.append("checklistItemIds", id));
-
-      const res = await fetch("/api/assets", {
-        method: "POST",
-        body: fd,
-      });
+      fd.append("nome", cNome); fd.append("codigo", cCodigo);
+      if (cFile) fd.append("file", cFile);
+      cIds.forEach((id) => fd.append("checklistItemIds", id));
+      const res = await fetch("/api/assets", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Erro ao criar ativo");
-
       toast.success("Ativo criado com sucesso");
-      setNome("");
-      setCodigo("");
-      setFile(null);
-      setSelectedChecklistIds([]);
-      const input = document.getElementById("asset-file-input") as HTMLInputElement | null;
-      if (input) input.value = "";
+      setCreateOpen(false); setCNome(""); setCCodigo(""); setCFile(null); setCIds([]);
       await refreshAssets();
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao criar ativo");
-    } finally {
-      setSaving(false);
-    }
+    } catch (err: any) { toast.error(err?.message || "Erro ao criar ativo"); }
+    finally { setSaving(false); }
   }
 
   function startEdit(asset: AssetRecord) {
-    setEditingId(asset.id);
-    setEditNome(asset.nome);
-    setEditCodigo(asset.codigo);
-    setEditFile(null);
-    setEditChecklistIds(asset.checklistLinks.map((link) => link.checklistItemId));
+    setEditAsset(asset); setENome(asset.nome); setECodigo(asset.codigo);
+    setEFile(null); setEIds(asset.checklistLinks.map((l) => l.checklistItemId));
+    setEditOpen(true);
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setEditNome("");
-    setEditCodigo("");
-    setEditFile(null);
-    setEditChecklistIds([]);
-  }
-
-  async function handleUpdate(assetId: string) {
-    if (!canManage) return;
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!canManage || !editAsset) return;
     try {
-      setBusyId(assetId);
+      setSaving(true); setBusyId(editAsset.id);
       const fd = new FormData();
-      fd.append("nome", editNome);
-      fd.append("codigo", editCodigo);
-      if (editFile) fd.append("file", editFile);
-      editChecklistIds.forEach((id) => fd.append("checklistItemIds", id));
-
-      const res = await fetch(`/api/assets/${assetId}`, {
-        method: "PATCH",
-        body: fd,
-      });
+      fd.append("nome", eNome); fd.append("codigo", eCodigo);
+      if (eFile) fd.append("file", eFile);
+      eIds.forEach((id) => fd.append("checklistItemIds", id));
+      const res = await fetch(`/api/assets/${editAsset.id}`, { method: "PATCH", body: fd });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Erro ao atualizar ativo");
-
+      if (!res.ok) throw new Error(data?.error || "Erro ao atualizar");
       toast.success("Ativo atualizado");
-      cancelEdit();
+      setEditOpen(false);
       await refreshAssets();
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao atualizar ativo");
-    } finally {
-      setBusyId(null);
-    }
+    } catch (err: any) { toast.error(err?.message || "Erro ao atualizar"); }
+    finally { setSaving(false); setBusyId(null); }
   }
 
   async function handleDelete(assetId: string, assetNome: string) {
     if (!canManage) return;
-    const confirmed = window.confirm(`Excluir o ativo \"${assetNome}\"?`);
-    if (!confirmed) return;
-
+    if (!window.confirm(`Excluir o ativo "${assetNome}"?`)) return;
     try {
       setBusyId(assetId);
-      const res = await fetch(`/api/assets/${assetId}`, {
-        method: "DELETE",
-      });
+      const res = await fetch(`/api/assets/${assetId}`, { method: "DELETE" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Erro ao excluir ativo");
+      if (!res.ok) throw new Error(data?.error || "Erro ao excluir");
       toast.success("Ativo excluído");
       await refreshAssets();
-    } catch (err: any) {
-      toast.error(err?.message || "Erro ao excluir ativo");
-    } finally {
-      setBusyId(null);
-    }
+    } catch (err: any) { toast.error(err?.message || "Erro ao excluir"); }
+    finally { setBusyId(null); }
   }
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-10">
-      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+      {/* Header */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground">Ativos</h1>
-          <p className="text-sm text-muted-foreground">
-            Cadastre equipamentos e vincule o ativo diretamente aos itens do checklist preventivo.
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary" className="h-9 rounded-lg px-3 text-xs font-medium">
-            {assets.length} ativo{assets.length === 1 ? "" : "s"}
-          </Badge>
-          <Button variant="outline" className="gap-2" onClick={() => refreshAssets(true)} disabled={refreshing}>
-            {refreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Atualizar
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[430px_minmax(0,1fr)]">
-        <Card className="border-border/60 bg-card/80">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Plus className="h-4 w-4" /> Novo ativo
-            </CardTitle>
-            <CardDescription>
-              Crie um cadastro central e já vincule o equipamento aos itens que devem herdar esse ativo na OS.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {!canManage ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                Seu perfil pode visualizar os ativos, mas não pode criar, editar ou excluir.
-              </div>
-            ) : (
-              <form className="space-y-4" onSubmit={handleCreate}>
-                <div className="space-y-2">
-                  <Label htmlFor="asset-nome">Nome do ativo</Label>
-                  <Input id="asset-nome" placeholder="Ex.: Inversor Container A" value={nome} onChange={(e) => setNome(e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="asset-codigo">Código do ativo</Label>
-                  <Input id="asset-codigo" placeholder="Ex.: INV-CT-A01" value={codigo} onChange={(e) => setCodigo(e.target.value)} required />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="asset-file-input">Foto do ativo</Label>
-                  <Input id="asset-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-                  <p className="text-xs text-muted-foreground">Opcional. Aceita JPG, PNG, WEBP e GIF com até 10 MB.</p>
-                </div>
-
-                <ChecklistSelector value={selectedChecklistIds} onChange={setSelectedChecklistIds} />
-
-                <Button type="submit" className="w-full gap-2" disabled={saving}>
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package2 className="h-4 w-4" />}
-                  Salvar ativo
-                </Button>
-              </form>
-            )}
-          </CardContent>
-        </Card>
-
-        <div className="space-y-4">
-          <Card className="border-border/60 bg-card/80">
-            <CardContent className="pt-6">
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar por nome, código ou item do checklist" className="pl-9" />
-              </div>
-            </CardContent>
-          </Card>
-
-          {filteredAssets.length === 0 ? (
-            <Card className="border-dashed border-border/70">
-              <CardContent className="flex min-h-52 flex-col items-center justify-center gap-3 pt-6 text-center">
-                <div className="rounded-full bg-muted p-3 text-muted-foreground">
-                  <Package2 className="h-6 w-6" />
-                </div>
-                <div>
-                  <p className="font-medium text-foreground">Nenhum ativo encontrado</p>
-                  <p className="text-sm text-muted-foreground">{query ? "Tente ajustar a busca." : "Cadastre o primeiro equipamento para começar."}</p>
-                </div>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-              {filteredAssets.map((asset) => {
-                const isEditing = editingId === asset.id;
-                const isBusy = busyId === asset.id;
-                return (
-                  <Card key={asset.id} className="border-border/60 bg-card/80">
-                    <CardContent className="pt-6">
-                      {isEditing ? (
-                        <div className="space-y-4">
-                          <div className="flex items-start gap-4">
-                            <AssetThumbnail src={asset.fotoUrl} alt={asset.nome} />
-                            <div className="min-w-0 flex-1 space-y-3">
-                              <div className="space-y-2">
-                                <Label>Nome</Label>
-                                <Input value={editNome} onChange={(e) => setEditNome(e.target.value)} />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Código</Label>
-                                <Input value={editCodigo} onChange={(e) => setEditCodigo(e.target.value)} />
-                              </div>
-                              <div className="space-y-2">
-                                <Label>Nova foto</Label>
-                                <Input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(e) => setEditFile(e.target.files?.[0] ?? null)} />
-                              </div>
-                            </div>
-                          </div>
-
-                          <ChecklistSelector value={editChecklistIds} onChange={setEditChecklistIds} />
-
-                          <div className="flex gap-2">
-                            <Button className="flex-1" onClick={() => handleUpdate(asset.id)} disabled={isBusy}>
-                              {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : "Salvar"}
-                            </Button>
-                            <Button variant="outline" onClick={cancelEdit} disabled={isBusy}>Cancelar</Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="space-y-4">
-                          <div className="flex items-start gap-4">
-                            <AssetThumbnail src={asset.fotoUrl} alt={asset.nome} />
-                            <div className="min-w-0 flex-1">
-                              <p className="truncate text-base font-semibold text-foreground">{asset.nome}</p>
-                              <p className="mt-1 inline-flex rounded-lg bg-muted px-2 py-1 text-xs font-medium text-muted-foreground">{asset.codigo}</p>
-                              <p className="mt-3 text-xs text-muted-foreground">Cadastrado em {formatDate(asset.createdAt)}</p>
-                            </div>
-                          </div>
-
-                          <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
-                            <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-foreground">
-                              <Link2 className="h-3.5 w-3.5 text-violet-600" />
-                              Itens vinculados do checklist
-                            </div>
-                            {asset.checklistLinks.length === 0 ? (
-                              <p className="text-xs text-muted-foreground">Nenhum item vinculado ainda.</p>
-                            ) : (
-                              <div className="space-y-2">
-                                {asset.checklistLinks.slice(0, 4).map((link) => (
-                                  <div key={`${asset.id}-${link.checklistItemId}`} className="rounded-lg bg-background px-2.5 py-2">
-                                    <div className="flex items-center gap-2">
-                                      <span className="font-mono text-[11px] font-semibold text-violet-700">{link.itemCodigo}</span>
-                                      <Badge variant="outline" className="rounded-md px-1.5 py-0 text-[10px]">{link.itemPeriodicidade}</Badge>
-                                    </div>
-                                    <p className="mt-1 text-xs text-foreground line-clamp-2">{link.itemDescricao}</p>
-                                  </div>
-                                ))}
-                                {asset.checklistLinks.length > 4 && (
-                                  <p className="text-[11px] text-muted-foreground">+{asset.checklistLinks.length - 4} vínculo(s) adicional(is)</p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-
-                          <div className="flex items-center justify-between gap-2 border-t pt-4">
-                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                              <ShieldCheck className="h-3.5 w-3.5 text-emerald-600" />
-                              Herda para OS automaticamente
-                            </div>
-                            {canManage && (
-                              <div className="flex gap-2">
-                                <Button size="sm" variant="outline" className="gap-2" onClick={() => startEdit(asset)}>
-                                  <Pencil className="h-4 w-4" /> Editar
-                                </Button>
-                                <Button size="sm" variant="outline" className="gap-2 text-red-600 hover:text-red-700" onClick={() => handleDelete(asset.id, asset.nome)} disabled={isBusy}>
-                                  {isBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />} Excluir
-                                </Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </CardContent>
-                  </Card>
-                );
-              })}
+          <div className="flex items-center gap-3 mb-1">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg,#1E1B4B,#8B1FA9)" }}>
+              <Package2 className="h-4 w-4 text-white" />
             </div>
+            <h1 className="text-2xl font-bold tracking-tight text-foreground">Ativos</h1>
+          </div>
+          <p className="text-sm text-muted-foreground ml-12">Equipamentos cadastrados com vínculos ao checklist preventivo.</p>
+        </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="inline-flex h-8 items-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700">
+            {assets.length} ativo{assets.length !== 1 ? "s" : ""}
+          </span>
+          <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => exportCSV(filteredAssets)}>
+            <Download className="h-3.5 w-3.5" /> Exportar CSV
+          </Button>
+          <Button variant="outline" size="sm" className="h-8 w-8 p-0" onClick={() => refreshAssets(true)} disabled={refreshing}>
+            {refreshing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+          </Button>
+          {canManage && (
+            <Button size="sm" className="gap-1.5 h-8" onClick={() => setCreateOpen(true)}
+              style={{ background: "linear-gradient(135deg,#1E1B4B,#8B1FA9)" }}>
+              <Plus className="h-3.5 w-3.5" /> Novo ativo
+            </Button>
           )}
         </div>
       </div>
+
+      {/* Filters */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 flex-1 flex-wrap">
+          <div className="relative min-w-[200px] flex-1 max-w-xs">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Buscar ativo…" className="pl-9 h-9" />
+            {query && (
+              <button onClick={() => setQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-0.5 rounded hover:bg-gray-100">
+                <X className="h-3.5 w-3.5 text-gray-400" />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            {["", "CRITICA", "ALTA", "MEDIA", "BAIXA"].map((p) => {
+              const pMap = p ? PRIORIDADE_MAP[p] : null;
+              const active = filterPrioridade === p;
+              return (
+                <button key={p} onClick={() => setFilterPrioridade(p)}
+                  className={cn("h-8 px-2.5 rounded-lg text-xs font-medium border transition-all",
+                    active
+                      ? (pMap ? cn(pMap.class, "ring-2 ring-offset-1 ring-gray-300") : "bg-gray-900 text-white border-gray-900")
+                      : "bg-white text-gray-500 border-gray-200 hover:border-gray-300")}>
+                  {p ? pMap?.label : "Todas"}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <div className="flex items-center gap-1 rounded-lg border border-gray-200 p-0.5 bg-white shrink-0">
+          <button onClick={() => setViewMode("table")} className={cn("p-1.5 rounded-md transition-colors", viewMode === "table" ? "bg-gray-100" : "hover:bg-gray-50")}>
+            <Table2 className="h-4 w-4 text-gray-600" />
+          </button>
+          <button onClick={() => setViewMode("cards")} className={cn("p-1.5 rounded-md transition-colors", viewMode === "cards" ? "bg-gray-100" : "hover:bg-gray-50")}>
+            <LayoutGrid className="h-4 w-4 text-gray-600" />
+          </button>
+        </div>
+      </div>
+
+      {/* Content */}
+      {filteredAssets.length === 0 ? (
+        <div className="flex flex-col items-center justify-center gap-4 rounded-2xl border border-dashed border-gray-200 py-20">
+          <div className="rounded-2xl bg-gray-100 p-4"><Package2 className="h-8 w-8 text-gray-400" /></div>
+          <div className="text-center">
+            <p className="font-semibold text-gray-700">Nenhum ativo encontrado</p>
+            <p className="text-sm text-muted-foreground mt-1">{query || filterPrioridade ? "Tente ajustar os filtros." : "Cadastre o primeiro equipamento."}</p>
+          </div>
+          {canManage && !query && !filterPrioridade && (
+            <Button onClick={() => setCreateOpen(true)} className="gap-2" style={{ background: "linear-gradient(135deg,#1E1B4B,#8B1FA9)" }}>
+              <Plus className="h-4 w-4" /> Criar primeiro ativo
+            </Button>
+          )}
+        </div>
+      ) : viewMode === "table" ? (
+        <SpreadsheetView assets={filteredAssets} canManage={canManage} onEdit={startEdit} onDelete={handleDelete} busyId={busyId} />
+      ) : (
+        <CardView assets={filteredAssets} canManage={canManage} onEdit={startEdit} onDelete={handleDelete} busyId={busyId} />
+      )}
+
+      {!canManage && (
+        <div className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          Seu perfil pode visualizar os ativos, mas não pode criar, editar ou excluir.
+        </div>
+      )}
+
+      {/* Create Dialog */}
+      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0" style={{ background: "linear-gradient(135deg,#1E1B4B,#8B1FA9)" }}>
+                <Plus className="h-4 w-4 text-white" />
+              </div>
+              Novo ativo
+            </DialogTitle>
+            <DialogDescription>Cadastre um equipamento e vincule-o aos itens do checklist preventivo.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleCreate} className="space-y-5 pt-2">
+            <AssetFormFields nome={cNome} setNome={setCNome} codigo={cCodigo} setCodigo={setCCodigo}
+              file={cFile} setFile={setCFile} checklistIds={cIds} setChecklistIds={setCIds}
+              fotoPreviewUrl={cPreview} />
+            <div className="flex gap-3 pt-2 border-t border-gray-100">
+              <Button type="button" variant="outline" className="flex-1 rounded-xl" onClick={() => setCreateOpen(false)} disabled={saving}>Cancelar</Button>
+              <Button type="submit" className="flex-1 rounded-xl" disabled={saving || !cNome || !cCodigo}
+                style={{ background: "linear-gradient(135deg,#1E1B4B,#8B1FA9)" }}>
+                {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Salvando…</> : "Salvar ativo"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Dialog */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+                <Pencil className="h-4 w-4 text-violet-600" />
+              </div>
+              Editar ativo
+            </DialogTitle>
+            {editAsset && (
+              <DialogDescription>
+                Editando <span className="font-semibold text-gray-700">{editAsset.nome}</span> · {editAsset.codigo}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <form onSubmit={handleUpdate} className="space-y-5 pt-2">
+            <AssetFormFields nome={eNome} setNome={setENome} codigo={eCodigo} setCodigo={setECodigo}
+              file={eFile} setFile={setEFile} checklistIds={eIds} setChecklistIds={setEIds}
+              fotoPreviewUrl={ePreview} currentFotoUrl={editAsset?.fotoUrl} isEdit />
+            <div className="flex gap-3 pt-2 border-t border-gray-100">
+              <Button type="button" variant="outline" className="flex-1 rounded-xl" onClick={() => setEditOpen(false)} disabled={saving}>Cancelar</Button>
+              <Button type="submit" className="flex-1 rounded-xl" disabled={saving || !eNome || !eCodigo}
+                style={{ background: "linear-gradient(135deg,#1E1B4B,#8B1FA9)" }}>
+                {saving ? <><Loader2 className="h-4 w-4 animate-spin mr-2" />Salvando…</> : "Salvar alterações"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

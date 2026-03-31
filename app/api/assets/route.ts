@@ -33,7 +33,10 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData();
   const nome = String(formData.get("nome") ?? "").trim();
   const codigo = String(formData.get("codigo") ?? "").trim();
-  const checklistItemIds = normalizeChecklistItemIds(formData.getAll("checklistItemIds").map((v) => String(v)));
+  const isAsicModel = formData.get("isAsicModel") === "true";
+  const checklistItemIds = normalizeChecklistItemIds(
+    formData.getAll("checklistItemIds").map((v) => String(v))
+  );
   const file = formData.get("file") as File | null;
 
   if (!nome) return NextResponse.json({ error: "Nome do ativo é obrigatório" }, { status: 400 });
@@ -62,6 +65,6 @@ export async function POST(req: NextRequest) {
     fotoUrl = upload.publicUrl;
   }
 
-  const asset = await createAsset({ id: assetId, nome, codigo, fotoUrl, checklistItemIds });
+  const asset = await createAsset({ id: assetId, nome, codigo, fotoUrl, isAsicModel, checklistItemIds });
   return NextResponse.json({ asset }, { status: 201 });
 }

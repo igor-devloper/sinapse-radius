@@ -8,6 +8,7 @@ import {
   Search, Plus, Loader2, Pencil, Trash2, Package2,
   RefreshCw, ImageIcon, Link2, ChevronDown, ChevronUp,
   ShieldCheck, LayoutGrid, Table2, Download, X, Check, AlertTriangle,
+  Cpu,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ type AssetRecord = {
   nome: string;
   codigo: string;
   fotoUrl: string | null;
+  isAsicModel: boolean;
   createdAt: string | Date;
   updatedAt: string | Date;
   checklistLinks: AssetLinkRecord[];
@@ -72,6 +74,48 @@ function AssetThumbnail({ src, alt, size = "md" }: { src: string | null; alt: st
           <ImageIcon className={size === "lg" ? "h-6 w-6" : "h-4 w-4"} />
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Toggle ASIC ──────────────────────────────────────────────────────────────
+function AsicToggle({ value, onChange }: { value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <div
+      onClick={() => onChange(!value)}
+      className={cn(
+        "flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-3 transition-all select-none",
+        value
+          ? "border-cyan-300 bg-cyan-50"
+          : "border-gray-200 bg-white hover:border-gray-300"
+      )}
+    >
+      <div className={cn(
+        "flex h-9 w-9 shrink-0 items-center justify-center rounded-lg transition-colors",
+        value ? "bg-cyan-500" : "bg-gray-100"
+      )}>
+        <Cpu className={cn("h-4 w-4", value ? "text-white" : "text-gray-400")} />
+      </div>
+      <div className="flex-1 min-w-0">
+        <p className={cn("text-sm font-semibold", value ? "text-cyan-800" : "text-gray-700")}>
+          Modelo ASIC (miner)
+        </p>
+        <p className={cn("text-xs mt-0.5", value ? "text-cyan-600" : "text-gray-400")}>
+          {value
+            ? "Miners serão cadastrados individualmente por número de série."
+            : "Ative para gerenciar miners (SNs) vinculados a este modelo."}
+        </p>
+      </div>
+      {/* Switch visual */}
+      <div className={cn(
+        "relative h-5 w-9 shrink-0 rounded-full transition-colors",
+        value ? "bg-cyan-500" : "bg-gray-200"
+      )}>
+        <span className={cn(
+          "absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-all",
+          value ? "left-4" : "left-0.5"
+        )} />
+      </div>
     </div>
   );
 }
@@ -155,11 +199,13 @@ function ChecklistSelector({ value, onChange }: { value: string[]; onChange: (ne
 
 function AssetFormFields({
   nome, setNome, codigo, setCodigo, file, setFile,
+  isAsicModel, setIsAsicModel,
   checklistIds, setChecklistIds, fotoPreviewUrl, currentFotoUrl, isEdit,
 }: {
   nome: string; setNome: (v: string) => void;
   codigo: string; setCodigo: (v: string) => void;
   file: File | null; setFile: (f: File | null) => void;
+  isAsicModel: boolean; setIsAsicModel: (v: boolean) => void;
   checklistIds: string[]; setChecklistIds: (ids: string[]) => void;
   fotoPreviewUrl: string | null;
   currentFotoUrl?: string | null;
@@ -171,49 +217,68 @@ function AssetFormFields({
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-1.5">
           <Label htmlFor="af-nome" className="text-xs font-semibold text-gray-700">Nome do ativo <span className="text-red-400">*</span></Label>
-          <Input id="af-nome" placeholder="Ex.: Inversor Container A" value={nome} onChange={(e) => setNome(e.target.value)} required className="rounded-xl" />
+          <Input id="af-nome" placeholder="Ex.: Antminer HQ3V6" value={nome} onChange={(e) => setNome(e.target.value)} required className="rounded-xl" />
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="af-codigo" className="text-xs font-semibold text-gray-700">Código <span className="text-red-400">*</span></Label>
-          <Input id="af-codigo" placeholder="Ex.: INV-CT-A01" value={codigo} onChange={(e) => setCodigo(e.target.value)} required className="rounded-xl" />
+          <Input id="af-codigo" placeholder="Ex.: ASIC-HQ3V6" value={codigo} onChange={(e) => setCodigo(e.target.value)} required className="rounded-xl" />
         </div>
       </div>
-      <div className="space-y-2">
-        <Label className="text-xs font-semibold text-gray-700">Foto do ativo <span className="text-gray-400 font-normal">(opcional)</span></Label>
-        <div className="flex items-center gap-3">
-          {previewSrc && (
-            <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border bg-muted/40">
-              <Image src={previewSrc} alt={nome || "ativo"} fill className="object-cover" sizes="56px" unoptimized />
-            </div>
-          )}
-          <label className="flex-1 flex items-center gap-2.5 rounded-xl border border-dashed border-violet-200 bg-violet-50/40 px-3 py-2.5 cursor-pointer hover:bg-violet-50 transition-colors">
-            <ImageIcon className="h-4 w-4 text-violet-400 shrink-0" />
-            <div className="min-w-0">
-              <p className="text-xs font-medium text-violet-800">{file ? file.name : (isEdit ? "Substituir foto" : "Enviar foto")}</p>
-              <p className="text-[10px] text-violet-500">JPG, PNG, WEBP — máx 10 MB</p>
-            </div>
-            <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="sr-only"
-              onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-          </label>
-          {file && (
-            <button type="button" onClick={() => setFile(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
-              <X className="h-4 w-4" />
-            </button>
-          )}
+
+      {/* Toggle ASIC */}
+      <AsicToggle value={isAsicModel} onChange={setIsAsicModel} />
+
+      {/* Foto — só mostra se não for ASIC (miners não têm foto individual) */}
+      {!isAsicModel && (
+        <div className="space-y-2">
+          <Label className="text-xs font-semibold text-gray-700">Foto do ativo <span className="text-gray-400 font-normal">(opcional)</span></Label>
+          <div className="flex items-center gap-3">
+            {previewSrc && (
+              <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl border bg-muted/40">
+                <Image src={previewSrc} alt={nome || "ativo"} fill className="object-cover" sizes="56px" unoptimized />
+              </div>
+            )}
+            <label className="flex-1 flex items-center gap-2.5 rounded-xl border border-dashed border-violet-200 bg-violet-50/40 px-3 py-2.5 cursor-pointer hover:bg-violet-50 transition-colors">
+              <ImageIcon className="h-4 w-4 text-violet-400 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-xs font-medium text-violet-800">{file ? file.name : (isEdit ? "Substituir foto" : "Enviar foto")}</p>
+                <p className="text-[10px] text-violet-500">JPG, PNG, WEBP — máx 10 MB</p>
+              </div>
+              <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" className="sr-only"
+                onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
+            </label>
+            {file && (
+              <button type="button" onClick={() => setFile(null)} className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-400 hover:text-gray-600">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Info quando é ASIC */}
+      {isAsicModel && (
+        <div className="rounded-xl border border-cyan-200 bg-cyan-50/60 px-4 py-3 flex items-start gap-3">
+          <Cpu className="h-4 w-4 text-cyan-500 mt-0.5 shrink-0" />
+          <div className="text-xs text-cyan-700 space-y-1">
+            <p className="font-semibold">Como funciona o modelo ASIC</p>
+            <p>Este ativo representa o <strong>modelo</strong> do miner (ex: Antminer HQ3V6). Após criar, vá em <strong>Ativos → Miners</strong> para cadastrar cada máquina individualmente pelo número de série (SN).</p>
+          </div>
+        </div>
+      )}
+
       <ChecklistSelector value={checklistIds} onChange={setChecklistIds} />
     </div>
   );
 }
 
 function exportCSV(assets: AssetRecord[]) {
-  const headers = ["#", "Nome", "Código", "Prioridade", "Qtd Vínculos", "IDs Vinculados", "Periodicidades", "Cadastro"];
+  const headers = ["#", "Nome", "Código", "Tipo", "Prioridade", "Qtd Vínculos", "IDs Vinculados", "Periodicidades", "Cadastro"];
   const rows = assets.map((a, i) => {
     const prioridade = PRIORIDADE_MAP[inferPrioridade(a.checklistLinks)]?.label ?? "";
     const ids = a.checklistLinks.map((l) => l.itemCodigo).join("; ");
     const periodicidades = Array.from(new Set(a.checklistLinks.map((l) => l.itemPeriodicidade))).join(", ");
-    return [i + 1, a.nome, a.codigo, prioridade, a.checklistLinks.length, ids, periodicidades, formatDate(a.createdAt)];
+    return [i + 1, a.nome, a.codigo, a.isAsicModel ? "ASIC" : "Equipamento", prioridade, a.checklistLinks.length, ids, periodicidades, formatDate(a.createdAt)];
   });
   const csv = [headers, ...rows].map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
   const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" });
@@ -239,6 +304,7 @@ function SpreadsheetView({ assets, canManage, onEdit, onDelete, busyId }: {
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-10">#</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-12"></th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500">Nome</th>
+              <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-28">Tipo</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-36">Código</th>
               <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 w-28">Prioridade</th>
               <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 w-20">Vínculos</th>
@@ -256,7 +322,15 @@ function SpreadsheetView({ assets, canManage, onEdit, onDelete, busyId }: {
               return (
                 <tr key={asset.id} className="border-b border-gray-50 hover:bg-gray-50/60 transition-colors group">
                   <td className="px-4 py-3 text-xs text-gray-400 font-mono">{String(idx + 1).padStart(2, "0")}</td>
-                  <td className="px-4 py-3"><AssetThumbnail src={asset.fotoUrl} alt={asset.nome} size="sm" /></td>
+                  <td className="px-4 py-3">
+                    {asset.isAsicModel ? (
+                      <div className="h-9 w-9 rounded-xl border border-cyan-200 bg-cyan-50 flex items-center justify-center">
+                        <Cpu className="h-4 w-4 text-cyan-500" />
+                      </div>
+                    ) : (
+                      <AssetThumbnail src={asset.fotoUrl} alt={asset.nome} size="sm" />
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <p className="font-semibold text-gray-900 text-sm">{asset.nome}</p>
                     {asset.checklistLinks.length > 0 && (
@@ -264,6 +338,17 @@ function SpreadsheetView({ assets, canManage, onEdit, onDelete, busyId }: {
                         {asset.checklistLinks.slice(0, 3).map((l) => l.itemCodigo).join(", ")}
                         {asset.checklistLinks.length > 3 && ` +${asset.checklistLinks.length - 3}`}
                       </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    {asset.isAsicModel ? (
+                      <span className="inline-flex items-center gap-1 rounded-lg bg-cyan-50 border border-cyan-200 px-2 py-1 text-[11px] font-semibold text-cyan-700">
+                        <Cpu className="h-3 w-3" /> ASIC
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center rounded-lg bg-gray-100 px-2 py-1 text-[11px] font-medium text-gray-500">
+                        Equipamento
+                      </span>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -319,16 +404,34 @@ function CardView({ assets, canManage, onEdit, onDelete, busyId }: {
         const isBusy = busyId === asset.id;
         const periodicidades = Array.from(new Set(asset.checklistLinks.map((l) => l.itemPeriodicidade)));
         return (
-          <div key={asset.id} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition-shadow overflow-hidden group">
+          <div key={asset.id} className={cn(
+            "bg-white rounded-2xl border shadow-sm hover:shadow-md transition-shadow overflow-hidden group",
+            asset.isAsicModel ? "border-cyan-100" : "border-gray-100"
+          )}>
+            {/* ASIC stripe */}
+            {asset.isAsicModel && <div className="h-1 w-full bg-gradient-to-r from-cyan-400 to-blue-500" />}
+
             <div className="flex items-start gap-3 p-4 pb-3">
-              <AssetThumbnail src={asset.fotoUrl} alt={asset.nome} size="md" />
+              {asset.isAsicModel ? (
+                <div className="h-14 w-14 shrink-0 rounded-xl border border-cyan-200 bg-cyan-50 flex items-center justify-center">
+                  <Cpu className="h-6 w-6 text-cyan-500" />
+                </div>
+              ) : (
+                <AssetThumbnail src={asset.fotoUrl} alt={asset.nome} size="md" />
+              )}
               <div className="min-w-0 flex-1">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
                     <p className="font-semibold text-gray-900 leading-tight">{asset.nome}</p>
                     <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                       <span className="rounded-lg bg-gray-100 px-2 py-0.5 text-xs font-mono text-gray-600">{asset.codigo}</span>
-                      <span className={cn("rounded-lg px-2 py-0.5 text-[11px] font-semibold border", pMap.class)}>{pMap.label}</span>
+                      {asset.isAsicModel ? (
+                        <span className="inline-flex items-center gap-1 rounded-lg bg-cyan-50 border border-cyan-200 px-2 py-0.5 text-[11px] font-semibold text-cyan-700">
+                          <Cpu className="h-3 w-3" /> ASIC
+                        </span>
+                      ) : (
+                        <span className={cn("rounded-lg px-2 py-0.5 text-[11px] font-semibold border", pMap.class)}>{pMap.label}</span>
+                      )}
                     </div>
                   </div>
                   {canManage && (
@@ -350,7 +453,9 @@ function CardView({ assets, canManage, onEdit, onDelete, busyId }: {
                 {asset.checklistLinks.length > 0 ? `${asset.checklistLinks.length} item${asset.checklistLinks.length !== 1 ? "s" : ""} vinculados` : "Sem vínculos"}
               </div>
               {asset.checklistLinks.length === 0 ? (
-                <p className="text-xs text-gray-400 italic">Nenhum item vinculado.</p>
+                <p className="text-xs text-gray-400 italic">
+                  {asset.isAsicModel ? "Cadastre miners em Ativos → Miners." : "Nenhum item vinculado."}
+                </p>
               ) : (
                 <div className="space-y-1.5">
                   {asset.checklistLinks.slice(0, 3).map((link) => (
@@ -372,8 +477,12 @@ function CardView({ assets, canManage, onEdit, onDelete, busyId }: {
               )}
             </div>
             <div className="px-4 py-2.5 border-t border-gray-100 flex items-center justify-between">
-              <div className="flex items-center gap-1.5 text-[11px] text-emerald-600 font-medium">
-                <ShieldCheck className="h-3 w-3" /> Herda para OS
+              <div className="flex items-center gap-1.5 text-[11px] font-medium">
+                {asset.isAsicModel ? (
+                  <span className="text-cyan-600 flex items-center gap-1"><Cpu className="h-3 w-3" /> Gerenciado por SN</span>
+                ) : (
+                  <span className="text-emerald-600 flex items-center gap-1"><ShieldCheck className="h-3 w-3" /> Herda para OS</span>
+                )}
               </div>
               <p className="text-[11px] text-gray-400">{formatDate(asset.createdAt)}</p>
             </div>
@@ -400,6 +509,7 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
   const [cNome, setCNome] = React.useState("");
   const [cCodigo, setCCodigo] = React.useState("");
   const [cFile, setCFile] = React.useState<File | null>(null);
+  const [cIsAsic, setCIsAsic] = React.useState(false);
   const [cIds, setCIds] = React.useState<string[]>([]);
   const [cPreview, setCPreview] = React.useState<string | null>(null);
 
@@ -409,6 +519,7 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
   const [eNome, setENome] = React.useState("");
   const [eCodigo, setECodigo] = React.useState("");
   const [eFile, setEFile] = React.useState<File | null>(null);
+  const [eIsAsic, setEIsAsic] = React.useState(false);
   const [eIds, setEIds] = React.useState<string[]>([]);
   const [ePreview, setEPreview] = React.useState<string | null>(null);
 
@@ -444,14 +555,16 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
     try {
       setSaving(true);
       const fd = new FormData();
-      fd.append("nome", cNome); fd.append("codigo", cCodigo);
+      fd.append("nome", cNome);
+      fd.append("codigo", cCodigo);
+      fd.append("isAsicModel", String(cIsAsic));
       if (cFile) fd.append("file", cFile);
       cIds.forEach((id) => fd.append("checklistItemIds", id));
       const res = await fetch("/api/assets", { method: "POST", body: fd });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Erro ao criar ativo");
-      toast.success("Ativo criado com sucesso");
-      setCreateOpen(false); setCNome(""); setCCodigo(""); setCFile(null); setCIds([]);
+      toast.success(cIsAsic ? "Modelo ASIC criado! Agora cadastre os miners em Ativos → Miners." : "Ativo criado com sucesso");
+      setCreateOpen(false); setCNome(""); setCCodigo(""); setCFile(null); setCIds([]); setCIsAsic(false);
       await refreshAssets();
     } catch (err: any) { toast.error(err?.message || "Erro ao criar ativo"); }
     finally { setSaving(false); }
@@ -459,6 +572,7 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
 
   function startEdit(asset: AssetRecord) {
     setEditAsset(asset); setENome(asset.nome); setECodigo(asset.codigo);
+    setEIsAsic(asset.isAsicModel);
     setEFile(null); setEIds(asset.checklistLinks.map((l) => l.checklistItemId));
     setEditOpen(true);
   }
@@ -469,7 +583,9 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
     try {
       setSaving(true); setBusyId(editAsset.id);
       const fd = new FormData();
-      fd.append("nome", eNome); fd.append("codigo", eCodigo);
+      fd.append("nome", eNome);
+      fd.append("codigo", eCodigo);
+      fd.append("isAsicModel", String(eIsAsic));
       if (eFile) fd.append("file", eFile);
       eIds.forEach((id) => fd.append("checklistItemIds", id));
       const res = await fetch(`/api/assets/${editAsset.id}`, { method: "PATCH", body: fd });
@@ -496,6 +612,8 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
     finally { setBusyId(null); }
   }
 
+  const asicCount = assets.filter((a) => a.isAsicModel).length;
+
   return (
     <div className="mx-auto max-w-7xl space-y-6 pb-10">
       {/* Header */}
@@ -513,6 +631,11 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
           <span className="inline-flex h-8 items-center rounded-lg bg-gray-100 px-3 text-xs font-semibold text-gray-700">
             {assets.length} ativo{assets.length !== 1 ? "s" : ""}
           </span>
+          {asicCount > 0 && (
+            <span className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-cyan-50 border border-cyan-200 px-3 text-xs font-semibold text-cyan-700">
+              <Cpu className="h-3 w-3" /> {asicCount} modelo{asicCount !== 1 ? "s" : ""} ASIC
+            </span>
+          )}
           <Button variant="outline" size="sm" className="gap-1.5 h-8" onClick={() => exportCSV(filteredAssets)}>
             <Download className="h-3.5 w-3.5" /> Exportar CSV
           </Button>
@@ -606,9 +729,13 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
             <DialogDescription>Cadastre um equipamento e vincule-o aos itens do checklist preventivo.</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleCreate} className="space-y-5 pt-2">
-            <AssetFormFields nome={cNome} setNome={setCNome} codigo={cCodigo} setCodigo={setCCodigo}
-              file={cFile} setFile={setCFile} checklistIds={cIds} setChecklistIds={setCIds}
-              fotoPreviewUrl={cPreview} />
+            <AssetFormFields
+              nome={cNome} setNome={setCNome} codigo={cCodigo} setCodigo={setCCodigo}
+              file={cFile} setFile={setCFile}
+              isAsicModel={cIsAsic} setIsAsicModel={setCIsAsic}
+              checklistIds={cIds} setChecklistIds={setCIds}
+              fotoPreviewUrl={cPreview}
+            />
             <div className="flex gap-3 pt-2 border-t border-gray-100">
               <Button type="button" variant="outline" className="flex-1 rounded-xl" onClick={() => setCreateOpen(false)} disabled={saving}>Cancelar</Button>
               <Button type="submit" className="flex-1 rounded-xl" disabled={saving || !cNome || !cCodigo}
@@ -637,9 +764,13 @@ export function AtivosPageClient({ initialAssets, canManage }: { initialAssets: 
             )}
           </DialogHeader>
           <form onSubmit={handleUpdate} className="space-y-5 pt-2">
-            <AssetFormFields nome={eNome} setNome={setENome} codigo={eCodigo} setCodigo={setECodigo}
-              file={eFile} setFile={setEFile} checklistIds={eIds} setChecklistIds={setEIds}
-              fotoPreviewUrl={ePreview} currentFotoUrl={editAsset?.fotoUrl} isEdit />
+            <AssetFormFields
+              nome={eNome} setNome={setENome} codigo={eCodigo} setCodigo={setECodigo}
+              file={eFile} setFile={setEFile}
+              isAsicModel={eIsAsic} setIsAsicModel={setEIsAsic}
+              checklistIds={eIds} setChecklistIds={setEIds}
+              fotoPreviewUrl={ePreview} currentFotoUrl={editAsset?.fotoUrl} isEdit
+            />
             <div className="flex gap-3 pt-2 border-t border-gray-100">
               <Button type="button" variant="outline" className="flex-1 rounded-xl" onClick={() => setEditOpen(false)} disabled={saving}>Cancelar</Button>
               <Button type="submit" className="flex-1 rounded-xl" disabled={saving || !eNome || !eCodigo}

@@ -3,12 +3,14 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useEffect } from "react";
 import {
   LayoutDashboard,
   ClipboardList,
   CalendarDays,
   ShieldCheck,
   Package2,
+  Pickaxe,
 } from "lucide-react";
 import {
   Sidebar,
@@ -20,6 +22,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import SvgIcon from "./logo";
 
@@ -49,6 +52,12 @@ const navItems = [
     cargos: ["ADMIN", "SUPERVISOR", "TECNICO", "VISUALIZADOR"],
   },
   {
+    label: "Miners",
+    href: "/miners",
+    icon: Pickaxe,
+    cargos: ["ADMIN", "SUPERVISOR", "TECNICO", "VISUALIZADOR"],
+  },
+  {
     label: "Administração",
     href: "/admin",
     icon: ShieldCheck,
@@ -63,9 +72,14 @@ interface AppSidebarProps {
 
 export function AppSidebar({ cargo, nome }: AppSidebarProps) {
   const pathname = usePathname();
-  const visibleItems = navItems.filter((item) =>
-    item.cargos.includes(cargo)
-  );
+  const { setOpenMobile } = useSidebar();
+
+  // Fecha o sidebar mobile sempre que a rota mudar
+  useEffect(() => {
+    setOpenMobile(false);
+  }, [pathname, setOpenMobile]);
+
+  const visibleItems = navItems.filter((item) => item.cargos.includes(cargo));
 
   return (
     <Sidebar collapsible="icon">
@@ -118,7 +132,6 @@ export function AppSidebar({ cargo, nome }: AppSidebarProps) {
       </SidebarContent>
 
       <SidebarFooter className="p-3">
-
         <div className="rounded-lg bg-sidebar-accent px-3 py-2.5 group-data-[collapsible=icon]:hidden">
           <p className="text-xs text-sidebar-foreground/60">Cargo</p>
           <p className="text-xs font-medium text-sidebar-foreground mt-0.5 capitalize">
@@ -131,7 +144,7 @@ export function AppSidebar({ cargo, nome }: AppSidebarProps) {
           </span>
         </div>
         <div className="flex items-center justify-center gap-2">
-          <p className="text-xs font-bold">Sistema Feito por </p>
+          <p className="text-xs font-bold">Sistema Desenvolvido por </p>
           <div className="flex items-center justify-center bg-white px-4 max-w-25 rounded-md group-data-[collapsible=icon]:hidden">
             <SvgIcon />
           </div>

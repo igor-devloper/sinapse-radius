@@ -16,6 +16,7 @@ export type AssetRecord = {
   nome: string;
   codigo: string;
   fotoUrl: string | null;
+  isAsicModel: boolean;
   createdAt: Date;
   updatedAt: Date;
   checklistLinks: AssetLinkRecord[];
@@ -66,9 +67,12 @@ function mapAsset(row: any): AssetRecord {
     nome: String(row.nome),
     codigo: String(row.codigo),
     fotoUrl: row.fotoUrl ? String(row.fotoUrl) : null,
+    isAsicModel: Boolean(row.isAsicModel),
     createdAt: toDate(row.createdAt),
     updatedAt: toDate(row.updatedAt),
-    checklistLinks: bindings.sort((a: { itemCodigo: string; }, b: { itemCodigo: any; }) => a.itemCodigo.localeCompare(b.itemCodigo, "pt-BR")),
+    checklistLinks: bindings.sort((a: { itemCodigo: string }, b: { itemCodigo: any }) =>
+      a.itemCodigo.localeCompare(b.itemCodigo, "pt-BR")
+    ),
   };
 }
 
@@ -96,9 +100,7 @@ function mapChecklistItem(row: any): ChecklistItemWithAsset {
 
 async function syncAssetTemplateLinks(tx: any, assetId: string, checklistItemIds: string[]) {
   const uniqueIds = Array.from(new Set(checklistItemIds.filter(Boolean)));
-
   await tx.assetChecklistTemplate.deleteMany({ where: { assetId } });
-
   if (uniqueIds.length > 0) {
     await tx.assetChecklistTemplate.createMany({
       data: uniqueIds.map((checklistItemId) => ({ assetId, checklistItemId })),
@@ -112,6 +114,7 @@ export async function createAsset(args: {
   nome: string;
   codigo: string;
   fotoUrl?: string | null;
+  isAsicModel?: boolean;
   checklistItemIds?: string[];
 }) {
   const created = await db.$transaction(async (tx: any) => {
@@ -121,6 +124,7 @@ export async function createAsset(args: {
         nome: args.nome,
         codigo: args.codigo,
         fotoUrl: args.fotoUrl ?? null,
+        isAsicModel: args.isAsicModel ?? false,
       },
       include: { checklistTemplateLinks: true },
     });
@@ -139,9 +143,8 @@ export async function createAsset(args: {
 export async function listAssets() {
   const rows = await db.asset.findMany({
     include: { checklistTemplateLinks: true },
-    orderBy: [{ nome: "asc" }, { codigo: "asc" }],
+    orderBy: [{ isAsicModel: "desc" }, { nome: "asc" }, { codigo: "asc" }],
   });
-
   return rows.map(mapAsset);
 }
 
@@ -150,7 +153,6 @@ export async function getAssetById(id: string) {
     where: { id },
     include: { checklistTemplateLinks: true },
   });
-
   return row ? mapAsset(row) : null;
 }
 
@@ -159,6 +161,7 @@ export async function updateAsset(args: {
   nome: string;
   codigo: string;
   fotoUrl?: string | null;
+  isAsicModel?: boolean;
   checklistItemIds?: string[];
 }) {
   const updated = await db.$transaction(async (tx: any) => {
@@ -168,6 +171,7 @@ export async function updateAsset(args: {
         nome: args.nome,
         codigo: args.codigo,
         fotoUrl: args.fotoUrl ?? null,
+        isAsicModel: args.isAsicModel ?? false,
       },
     });
 
@@ -191,7 +195,6 @@ export async function countChecklistUsageByAsset(assetId: string) {
     db.assetChecklistTemplate.count({ where: { assetId } }),
     db.checklistItemOS.count({ where: { assetId } }),
   ]);
-
   return templateUsage + osUsage;
 }
 
@@ -199,30 +202,22 @@ export async function getChecklistItemsWithAssets(osId: string) {
   const rows = await db.checklistItemOS.findMany({
     where: { osId },
     include: {
-      asset: {
-        select: {
-          nome: true,
-          codigo: true,
-          fotoUrl: true,
-        },
-      },
+      asset: { select: { nome: true, codigo: true, fotoUrl: true } },
     },
     orderBy: [{ subsistema: "asc" }, { itemId: "asc" }],
   });
-
   return rows.map(mapChecklistItem);
 }
 
 export async function getAssetBindingsForChecklistItems(itemIds: string[]) {
   const uniqueIds = Array.from(new Set(itemIds.filter(Boolean)));
-  if (uniqueIds.length === 0) return new Map<string, { assetId: string; assetNome: string | null; assetCodigo: string | null; assetFotoUrl: string | null }>();
+  if (uniqueIds.length === 0)
+    return new Map<string, { assetId: string; assetNome: string | null; assetCodigo: string | null; assetFotoUrl: string | null }>();
 
   const bindings = await db.assetChecklistTemplate.findMany({
     where: { checklistItemId: { in: uniqueIds } },
     include: {
-      asset: {
-        select: { id: true, nome: true, codigo: true, fotoUrl: true },
-      },
+      asset: { select: { id: true, nome: true, codigo: true, fotoUrl: true } },
     },
     orderBy: { createdAt: "asc" },
   });

@@ -74,6 +74,13 @@ enum StatusChecklistItem {
   REQUER_ATENCAO
 }
 
+// Status de um miner individual na execução de uma OS
+enum StatusMiner {
+  FUNCIONANDO
+  OFFLINE
+  COM_FALHA
+}
+
 model Usuario {
   id        String   @id @default(cuid())
   clerkId   String   @unique
@@ -132,6 +139,7 @@ model OrdemServico {
   historicoOS    HistoricoOS[]
   anexos         Anexo[]
   checklistItems ChecklistItemOS[]
+  minerChecks    MinerCheckOS[]   // checks de miners associados a esta OS
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -144,13 +152,56 @@ model Asset {
   nome      String
   codigo    String
   fotoUrl   String?
+  // Tipo especial para ASICs — quando true, miners são gerenciados via MinerInstance
+  isAsicModel Boolean @default(false)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   checklistItems         ChecklistItemOS[]
   checklistTemplateLinks AssetChecklistTemplate[]
+  minerInstances         MinerInstance[]          // instâncias de miners filhas
 
   @@map("assets")
+}
+
+// Instância simplificada de um miner (ASIC)
+// Vinculada a um Asset pai do tipo ASIC (modelo)
+model MinerInstance {
+  id           String   @id @default(cuid())
+  serialNumber String   @unique
+  status       String   @default("ativo") // ativo | inativo | manutencao
+  containerId  String?
+  assetId      String   // Asset pai (modelo "Antminer HQ3V6")
+  asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  minerChecks MinerCheckOS[]
+
+  @@index([assetId])
+  @@index([containerId])
+  @@index([status])
+  @@map("miner_instances")
+}
+
+// Registro do status de um miner individual durante execução de uma OS
+model MinerCheckOS {
+  id              String      @id @default(cuid())
+  osId            String
+  os              OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  minerInstanceId String
+  minerInstance   MinerInstance @relation(fields: [minerInstanceId], references: [id], onDelete: Cascade)
+  status          StatusMiner @default(FUNCIONANDO)
+  observacao      String?
+  atualizadoPorId String?
+  atualizadoEm    DateTime?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([osId, minerInstanceId])
+  @@index([osId])
+  @@index([minerInstanceId])
+  @@map("miner_checks_os")
 }
 
 model AssetChecklistTemplate {

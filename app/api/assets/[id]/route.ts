@@ -19,12 +19,10 @@ async function getAuthorizedUser() {
   if (!userId) {
     return { error: NextResponse.json({ error: "Não autorizado" }, { status: 401 }), usuario: null };
   }
-
   const usuario = await prisma.usuario.findUnique({ where: { clerkId: userId } });
   if (!usuario) {
     return { error: NextResponse.json({ error: "Usuário não encontrado" }, { status: 404 }), usuario: null };
   }
-
   return { error: null, usuario };
 }
 
@@ -46,7 +44,12 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
   const formData = await req.formData();
   const nome = String(formData.get("nome") ?? current.nome).trim();
   const codigo = String(formData.get("codigo") ?? current.codigo).trim();
-  const checklistItemIds = normalizeChecklistItemIds(formData.getAll("checklistItemIds").map((v) => String(v)));
+  // Se o campo não vem no form, mantém o valor atual
+  const isAsicModelRaw = formData.get("isAsicModel");
+  const isAsicModel = isAsicModelRaw !== null ? isAsicModelRaw === "true" : current.isAsicModel;
+  const checklistItemIds = normalizeChecklistItemIds(
+    formData.getAll("checklistItemIds").map((v) => String(v))
+  );
   const file = formData.get("file") as File | null;
 
   if (!nome) return NextResponse.json({ error: "Nome do ativo é obrigatório" }, { status: 400 });
@@ -61,7 +64,6 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     if (file.size > 10 * 1024 * 1024) {
       return NextResponse.json({ error: "Imagem muito grande (máx. 10 MB)" }, { status: 400 });
     }
-
     const bytes = Buffer.from(await file.arrayBuffer());
     const upload = await uploadFotoAsset({
       assetId: id,
@@ -72,7 +74,7 @@ export async function PATCH(req: NextRequest, ctx: Ctx) {
     fotoUrl = upload.publicUrl;
   }
 
-  const asset = await updateAsset({ id, nome, codigo, fotoUrl, checklistItemIds });
+  const asset = await updateAsset({ id, nome, codigo, fotoUrl, isAsicModel, checklistItemIds });
   return NextResponse.json({ asset });
 }
 

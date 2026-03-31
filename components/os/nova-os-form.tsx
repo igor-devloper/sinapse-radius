@@ -17,7 +17,7 @@ import {
   AlertCircle, BookOpen, Clock, Upload, X, FileText,
   Image as ImageIcon, File, CalendarIcon, Zap, CheckCircle2,
   ClipboardCheck, List, Calendar, CalendarRange, Layers, Box,
-  Plus, Search, Package2, ChevronDown, ChevronUp,
+  Plus, Search, Package2, ChevronDown, ChevronUp, Cpu,
 } from "lucide-react";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -33,7 +33,7 @@ import { cn } from "@/lib/utils";
 import Image from "next/image";
 
 interface Tecnico { id: string; nome: string; cargo: string; avatarUrl?: string | null; }
-interface AssetExistente { id: string; nome: string; codigo: string; fotoUrl: string | null; }
+interface AssetExistente { id: string; nome: string; codigo: string; fotoUrl: string | null; isAsicModel?: boolean; }
 interface AnexoLocal { uid: string; file: File; }
 interface AssetDraft {
   itemId: string;
@@ -141,169 +141,217 @@ function SectionDivider({ children }: { children: React.ReactNode }) {
   );
 }
 
-// ─── Asset Configurator with existing assets ──────────────────────────────────
-function AssetConfigurator({
-  item, value, onChange, assetsExistentes,
+// ─── Asset Dropdown (replaces the heavy per-item configurator) ─────────────────
+function AssetDropdown({
+  label,
+  value,
+  onChange,
+  assetsExistentes,
+  placeholder = "Selecionar ativo…",
+  allowNone = true,
 }: {
-  item: { id: string; descricao: string; periodicidade: string };
-  value: AssetDraft;
-  onChange: (next: AssetDraft) => void;
+  label?: string;
+  value: string;
+  onChange: (id: string) => void;
   assetsExistentes: AssetExistente[];
+  placeholder?: string;
+  allowNone?: boolean;
 }) {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [showDropdown, setShowDropdown] = useState(false);
+  const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState("");
 
-  const filteredAssets = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase();
     if (!q) return assetsExistentes;
-    return assetsExistentes.filter((a) => a.nome.toLowerCase().includes(q) || a.codigo.toLowerCase().includes(q));
-  }, [assetsExistentes, searchQuery]);
+    return assetsExistentes.filter(
+      (a) => a.nome.toLowerCase().includes(q) || a.codigo.toLowerCase().includes(q)
+    );
+  }, [assetsExistentes, search]);
 
-  const selectedAsset = value.mode === "existente" && value.existenteId
-    ? assetsExistentes.find((a) => a.id === value.existenteId)
-    : null;
+  const selected = assetsExistentes.find((a) => a.id === value);
 
   return (
-    <div className="rounded-2xl border border-gray-100 bg-white p-4 space-y-4">
-      {/* Item info */}
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-semibold text-gray-800 leading-snug">
-            <span className="font-mono text-xs text-purple-400 mr-1.5">{item.id}</span>
-            {item.descricao}
-          </p>
-          <p className="text-[11px] text-gray-400 mt-1">Periodicidade: {item.periodicidade}</p>
-        </div>
-        <div className="shrink-0 rounded-lg bg-purple-50 text-purple-700 border border-purple-100 px-2 py-1 text-[10px] font-semibold flex items-center gap-1">
-          <Box className="w-3 h-3" /> Ativo
-        </div>
-      </div>
-
-      {/* Mode selector */}
-      <div className="grid grid-cols-3 gap-2">
-        {[
-          { mode: "nenhum" as const, label: "Sem ativo", icon: X },
-          { mode: "existente" as const, label: "Existente", icon: Search },
-          { mode: "novo" as const, label: "Criar novo", icon: Plus },
-        ].map(({ mode, label, icon: Icon }) => (
-          <button key={mode} type="button"
-            onClick={() => onChange({ ...value, mode })}
-            className={cn("rounded-xl border px-3 py-2 text-xs font-semibold flex items-center gap-1.5 justify-center transition-all",
-              value.mode === mode
-                ? "border-violet-400 bg-violet-50 text-violet-800 ring-2 ring-violet-100"
-                : "border-gray-200 bg-white text-gray-500 hover:border-gray-300")}>
-            <Icon className="w-3.5 h-3.5" />
-            {label}
-          </button>
-        ))}
-      </div>
-
-      {/* Existente: search + select */}
-      {value.mode === "existente" && (
-        <div className="space-y-2">
-          {selectedAsset ? (
-            <div className="flex items-center gap-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2.5">
-              <div className="relative h-10 w-10 shrink-0 rounded-lg overflow-hidden border border-violet-100 bg-white">
-                {selectedAsset.fotoUrl ? (
-                  <Image src={selectedAsset.fotoUrl} alt={selectedAsset.nome} fill className="object-cover" sizes="40px" unoptimized />
+    <div className="space-y-1.5">
+      {label && <Label className="text-xs font-medium text-gray-600">{label}</Label>}
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          className="w-full flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm text-left hover:border-gray-300 transition-colors"
+        >
+          {selected ? (
+            <>
+              <div className="relative w-6 h-6 rounded overflow-hidden border border-gray-100 shrink-0">
+                {selected.fotoUrl ? (
+                  <Image src={selected.fotoUrl} alt={selected.nome} fill className="object-cover" sizes="24px" unoptimized />
                 ) : (
-                  <div className="flex h-full w-full items-center justify-center"><Package2 className="h-4 w-4 text-violet-300" /></div>
+                  <div className="flex h-full w-full items-center justify-center bg-gray-50">
+                    {selected.isAsicModel ? <Cpu className="w-3 h-3 text-violet-400" /> : <Package2 className="w-3 h-3 text-gray-300" />}
+                  </div>
                 )}
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold text-violet-900 truncate">{selectedAsset.nome}</p>
-                <p className="text-[11px] font-mono text-violet-600">{selectedAsset.codigo}</p>
-              </div>
-              <button type="button" onClick={() => onChange({ ...value, existenteId: "" })}
-                className="p-1 rounded-lg hover:bg-violet-100 text-violet-400">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-          ) : (
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
-              <Input
-                value={searchQuery}
-                onChange={(e) => { setSearchQuery(e.target.value); setShowDropdown(true); }}
-                onFocus={() => setShowDropdown(true)}
-                placeholder="Buscar ativo existente…"
-                className="pl-9 rounded-xl"
-              />
-              {showDropdown && filteredAssets.length > 0 && (
-                <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-xl border border-gray-200 bg-white shadow-lg max-h-48 overflow-y-auto">
-                  {filteredAssets.slice(0, 8).map((a) => (
-                    <button key={a.id} type="button"
-                      onClick={() => { onChange({ ...value, existenteId: a.id }); setShowDropdown(false); setSearchQuery(""); }}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 hover:bg-violet-50 transition-colors text-left border-b last:border-b-0">
-                      <div className="relative h-8 w-8 shrink-0 rounded-lg overflow-hidden border bg-gray-50">
-                        {a.fotoUrl ? (
-                          <Image src={a.fotoUrl} alt={a.nome} fill className="object-cover" sizes="32px" unoptimized />
-                        ) : (
-                          <div className="flex h-full w-full items-center justify-center"><Package2 className="h-3.5 w-3.5 text-gray-300" /></div>
-                        )}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-800 truncate">{a.nome}</p>
-                        <p className="text-[11px] font-mono text-gray-400">{a.codigo}</p>
-                      </div>
-                    </button>
-                  ))}
-                  {filteredAssets.length === 0 && (
-                    <div className="px-3 py-4 text-center text-sm text-gray-400">Nenhum ativo encontrado</div>
-                  )}
-                </div>
+              <span className="flex-1 truncate font-medium text-gray-800">{selected.nome}</span>
+              <span className="text-xs text-gray-400 font-mono shrink-0">{selected.codigo}</span>
+              {selected.isAsicModel && (
+                <Badge className="text-[9px] bg-violet-100 text-violet-700 border-violet-200 shrink-0">ASIC</Badge>
               )}
-            </div>
+            </>
+          ) : (
+            <span className="flex-1 text-gray-400">{placeholder}</span>
           )}
-          {assetsExistentes.length === 0 && (
-            <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2 border border-amber-100">
-              Nenhum ativo cadastrado ainda. Use "Criar novo" para adicionar.
-            </p>
-          )}
-        </div>
-      )}
+          <ChevronDown className={cn("w-4 h-4 text-gray-400 shrink-0 transition-transform", open && "rotate-180")} />
+        </button>
 
-      {/* Novo: nome + código + foto */}
-      {value.mode === "novo" && (
-        <div className="space-y-3">
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Nome do ativo" required>
-              <Input value={value.nome} onChange={(e) => onChange({ ...value, nome: e.target.value })}
-                className="rounded-xl border-gray-200 focus-visible:ring-purple-300" placeholder="Ex: Inversor 01" />
-            </Field>
-            <Field label="Código" required>
-              <Input value={value.codigo} onChange={(e) => onChange({ ...value, codigo: e.target.value })}
-                className="rounded-xl border-gray-200 focus-visible:ring-purple-300" placeholder="Ex: INV-001" />
-            </Field>
-          </div>
-          <Field label="Foto" hint="opcional">
-            <label className="flex items-center gap-3 rounded-xl border border-dashed border-purple-200 bg-purple-50/50 px-3 py-2.5 cursor-pointer hover:bg-purple-50 transition-colors">
-              <div className="w-8 h-8 rounded-lg bg-white border border-purple-100 flex items-center justify-center shrink-0">
-                <ImageIcon className="w-3.5 h-3.5 text-purple-400" />
+        {open && (
+          <div className="absolute z-50 left-0 right-0 top-full mt-1 rounded-xl border border-gray-200 bg-white shadow-xl">
+            <div className="p-2 border-b border-gray-100">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400 pointer-events-none" />
+                <Input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Buscar ativo…"
+                  className="pl-9 rounded-lg h-8 text-xs"
+                  autoFocus
+                />
               </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-medium text-purple-800">{value.fotoFile ? value.fotoFile.name : "Enviar foto"}</p>
-                <p className="text-[10px] text-purple-500">JPG, PNG, WEBP — máx 10 MB</p>
-              </div>
-              <input type="file" accept="image/*" className="sr-only"
-                onChange={(e) => {
-                  const file = e.target.files?.[0] ?? null;
-                  onChange({ ...value, fotoFile: file, fotoPreviewUrl: file ? URL.createObjectURL(file) : null });
-                }} />
-            </label>
-            {value.fotoPreviewUrl && (
-              <div className="flex items-center gap-3 mt-2 rounded-xl border border-gray-100 bg-gray-50 p-2">
-                <div className="relative h-12 w-12 rounded-lg overflow-hidden border border-gray-100 shrink-0">
-                  <Image src={value.fotoPreviewUrl} alt={value.nome} fill className="object-cover" sizes="48px" unoptimized />
-                </div>
-                <p className="text-xs text-gray-600 truncate flex-1">{value.fotoFile?.name}</p>
-                <button type="button" onClick={() => onChange({ ...value, fotoFile: null, fotoPreviewUrl: null })}
-                  className="p-1 rounded-lg hover:bg-gray-200 text-gray-400">
-                  <X className="h-3.5 w-3.5" />
+            </div>
+            <div className="max-h-56 overflow-y-auto">
+              {allowNone && (
+                <button
+                  type="button"
+                  onClick={() => { onChange(""); setOpen(false); setSearch(""); }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-gray-50 transition-colors border-b border-gray-50",
+                    !value && "bg-violet-50"
+                  )}
+                >
+                  <X className="w-3.5 h-3.5 text-gray-400" />
+                  <span className="text-gray-400 text-xs">Sem ativo vinculado</span>
                 </button>
-              </div>
-            )}
-          </Field>
+              )}
+              {filtered.length === 0 && (
+                <div className="px-3 py-4 text-center text-xs text-gray-400">Nenhum ativo encontrado</div>
+              )}
+              {filtered.map((a) => (
+                <button
+                  key={a.id}
+                  type="button"
+                  onClick={() => { onChange(a.id); setOpen(false); setSearch(""); }}
+                  className={cn(
+                    "w-full flex items-center gap-3 px-3 py-2.5 text-left hover:bg-violet-50 transition-colors border-b last:border-b-0 border-gray-50",
+                    value === a.id && "bg-violet-50"
+                  )}
+                >
+                  <div className="relative w-8 h-8 rounded-lg overflow-hidden border bg-gray-50 shrink-0">
+                    {a.fotoUrl ? (
+                      <Image src={a.fotoUrl} alt={a.nome} fill className="object-cover" sizes="32px" unoptimized />
+                    ) : (
+                      <div className="flex h-full w-full items-center justify-center">
+                        {a.isAsicModel ? <Cpu className="w-4 h-4 text-violet-300" /> : <Package2 className="h-3.5 w-3.5 text-gray-300" />}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-sm font-medium text-gray-800 truncate">{a.nome}</p>
+                      {a.isAsicModel && <Badge className="text-[9px] bg-violet-100 text-violet-700 border-violet-200 shrink-0">ASIC</Badge>}
+                    </div>
+                    <p className="text-[11px] font-mono text-gray-400">{a.codigo}</p>
+                  </div>
+                  {value === a.id && <CheckCircle2 className="w-4 h-4 text-violet-500 shrink-0" />}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Multi-asset dropdown for checklist items ──────────────────────────────────
+function ChecklistAssetSection({
+  itensChecklist,
+  itemAssets,
+  assetsExistentes,
+  onItemAssetChange,
+}: {
+  itensChecklist: Array<{ id: string; descricao: string; periodicidade: string; subsistema: string }>;
+  itemAssets: Record<string, string>;
+  assetsExistentes: AssetExistente[];
+  onItemAssetChange: (itemId: string, assetId: string) => void;
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  const asicAssets = assetsExistentes.filter((a) => a.isAsicModel);
+  const regularAssets = assetsExistentes.filter((a) => !a.isAsicModel);
+
+  // Group items by subsistema
+  const bySubsistema = useMemo(() => {
+    const groups: Record<string, typeof itensChecklist> = {};
+    for (const item of itensChecklist) {
+      const key = item.subsistema || "Geral";
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(item);
+    }
+    return groups;
+  }, [itensChecklist]);
+
+  const isAsicItem = (itemId: string) => itemId.startsWith("M-");
+
+  return (
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm">
+      <button
+        type="button"
+        onClick={() => setCollapsed((c) => !c)}
+        className="w-full flex items-center justify-between p-5 text-left"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-violet-50 border border-violet-100 flex items-center justify-center">
+            <Package2 className="w-4 h-4 text-violet-500" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-gray-800">Ativos por Item de Checklist</p>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {Object.values(itemAssets).filter(Boolean).length} de {itensChecklist.length} vinculados
+            </p>
+          </div>
+        </div>
+        {collapsed ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronUp className="w-4 h-4 text-gray-400" />}
+      </button>
+
+      {!collapsed && (
+        <div className="px-5 pb-5 space-y-5 border-t border-gray-50">
+          {Object.entries(bySubsistema).map(([subsistema, items]) => (
+            <div key={subsistema} className="space-y-3">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 pt-3">{subsistema}</p>
+              {items.map((item) => {
+                const isAsic = isAsicItem(item.id);
+                const relevantAssets = isAsic ? asicAssets : regularAssets.length > 0 ? regularAssets : assetsExistentes;
+                return (
+                  <div key={item.id} className="rounded-xl border border-gray-100 bg-gray-50 p-3 space-y-2">
+                    <div className="flex items-start gap-2">
+                      <span className="font-mono text-[10px] text-violet-400 shrink-0 mt-0.5 w-12">{item.id}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium text-gray-700 leading-snug">{item.descricao}</p>
+                        <p className="text-[10px] text-gray-400">{item.periodicidade}</p>
+                      </div>
+                      {isAsic && (
+                        <Badge className="text-[9px] bg-violet-100 text-violet-700 border-violet-200 shrink-0">ASIC</Badge>
+                      )}
+                    </div>
+                    <AssetDropdown
+                      value={itemAssets[item.id] ?? ""}
+                      onChange={(id) => onItemAssetChange(item.id, id)}
+                      assetsExistentes={relevantAssets}
+                      placeholder={isAsic ? "Selecionar modelo ASIC…" : "Selecionar ativo…"}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -335,8 +383,9 @@ export function NovaOSForm({
     dataProgramada: "", dataFimProgramada: "",
     containerId: "", responsavelId: "",
   });
-  const [itemAssets, setItemAssets] = useState<Record<string, AssetDraft>>({});
-  const [creatingAssets, setCreatingAssets] = useState(false);
+
+  // itemAssets: itemId → assetId (string, not full draft)
+  const [itemAssets, setItemAssets] = useState<Record<string, string>>({});
 
   // Corretiva
   const [corrForm, setCorrForm] = useState({
@@ -349,7 +398,9 @@ export function NovaOSForm({
 
   function setPrev(k: string, v: string | string[]) { setPrevForm((f) => ({ ...f, [k]: v })); }
   function setCorr(k: string, v: string) { setCorrForm((f) => ({ ...f, [k]: v })); }
-  function setItemAsset(itemId: string, next: AssetDraft) { setItemAssets((p) => ({ ...p, [itemId]: next })); }
+  function setItemAsset(itemId: string, assetId: string) {
+    setItemAssets((p) => ({ ...p, [itemId]: assetId }));
+  }
 
   function togglePeriodicidade(per: string) {
     setPrevForm((f) => {
@@ -371,12 +422,12 @@ export function NovaOSForm({
     [prevForm.periodicidadesSelecionadas]
   );
 
+  // Clean up removed items
   useEffect(() => {
+    const itemIds = new Set(itensChecklist.map((i) => i.id));
     setItemAssets((prev) => {
-      const next: Record<string, AssetDraft> = {};
-      for (const item of itensChecklist) {
-        next[item.id] = prev[item.id] ?? buildAssetDraft(item.id);
-      }
+      const next: Record<string, string> = {};
+      for (const id of itemIds) next[id] = prev[id] ?? "";
       return next;
     });
   }, [itensChecklist]);
@@ -402,34 +453,10 @@ export function NovaOSForm({
       let payload: Record<string, unknown>;
 
       if (tipoOS === "PREVENTIVA") {
-        setCreatingAssets(true);
-        const checklistAssets: Array<{ itemId: string; assetId: string }> = [];
-
-        for (const item of itensChecklist) {
-          const asset = itemAssets[item.id];
-          if (!asset || asset.mode === "nenhum") continue;
-
-          if (asset.mode === "existente") {
-            if (!asset.existenteId) continue;
-            checklistAssets.push({ itemId: item.id, assetId: asset.existenteId });
-            continue;
-          }
-
-          // mode === "novo"
-          const nome = asset.nome.trim();
-          const codigo = asset.codigo.trim();
-          if (!nome || !codigo) throw new Error(`Preencha nome e código do ativo no item ${item.id}.`);
-
-          const fd = new FormData();
-          fd.append("nome", nome); fd.append("codigo", codigo);
-          if (asset.fotoFile) fd.append("file", asset.fotoFile);
-
-          const assetRes = await fetch("/api/assets", { method: "POST", body: fd });
-          const assetJson = await assetRes.json().catch(() => ({}));
-          if (!assetRes.ok || !assetJson?.asset?.id) throw new Error(assetJson?.error ?? `Erro ao criar ativo do item ${item.id}.`);
-
-          checklistAssets.push({ itemId: item.id, assetId: assetJson.asset.id });
-        }
+        // Build checklistAssets from simple itemAssets map
+        const checklistAssets = Object.entries(itemAssets)
+          .filter(([, assetId]) => !!assetId)
+          .map(([itemId, assetId]) => ({ itemId, assetId }));
 
         payload = {
           tipoOS: "PREVENTIVA",
@@ -471,7 +498,7 @@ export function NovaOSForm({
       router.push(`/ordens/${data.os.id}`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Erro inesperado");
-    } finally { setLoading(false); setCreatingAssets(false); }
+    } finally { setLoading(false); }
   }
 
   const canSubmit = tipoOS === "PREVENTIVA"
@@ -579,7 +606,7 @@ export function NovaOSForm({
                 <div className="space-y-1 max-h-44 overflow-y-auto pr-1">
                   {itensChecklist.map((item) => (
                     <div key={item.id} className="flex items-center gap-2 text-xs text-purple-700">
-                      <span className="font-mono text-purple-400 shrink-0 w-10">{item.id}</span>
+                      <span className="font-mono text-purple-400 shrink-0 w-12">{item.id}</span>
                       <span className="flex-1 truncate">{item.descricao}</span>
                       <span className="shrink-0 text-purple-400 text-[10px]">{item.periodicidade}</span>
                     </div>
@@ -594,29 +621,25 @@ export function NovaOSForm({
             )}
           </div>
 
-          {/* Ativos por item */}
-          {prevForm.periodicidadesSelecionadas.length > 0 && itensChecklist.length > 0 && (
-            <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
-              <SectionDivider>Ativos por Item de Checklist</SectionDivider>
-              <div className="flex items-start gap-3 bg-violet-50 border border-violet-100 rounded-xl p-3">
-                <Package2 className="w-4 h-4 text-violet-500 mt-0.5 shrink-0" />
-                <div>
-                  <p className="text-xs font-semibold text-violet-800">Vincule o equipamento real a cada item</p>
-                  <p className="text-xs text-violet-600 mt-0.5">
-                    Use um ativo já cadastrado ({assetsExistentes.length} disponíve{assetsExistentes.length !== 1 ? "is" : "l"}) ou crie um novo diretamente aqui.
-                  </p>
-                </div>
-              </div>
-              <div className="space-y-3">
-                {itensChecklist.map((item) => (
-                  <AssetConfigurator
-                    key={item.id}
-                    item={item}
-                    value={itemAssets[item.id] ?? buildAssetDraft(item.id)}
-                    onChange={(next) => setItemAsset(item.id, next)}
-                    assetsExistentes={assetsExistentes}
-                  />
-                ))}
+          {/* Ativos por item — agora como dropdown */}
+          {itensChecklist.length > 0 && assetsExistentes.length > 0 && (
+            <ChecklistAssetSection
+              itensChecklist={itensChecklist}
+              itemAssets={itemAssets}
+              assetsExistentes={assetsExistentes}
+              onItemAssetChange={setItemAsset}
+            />
+          )}
+
+          {/* ASIC miners notice */}
+          {itensChecklist.some((i) => i.id.startsWith("M-")) && (
+            <div className="flex items-start gap-3 rounded-2xl border border-violet-200 bg-violet-50 px-4 py-3.5">
+              <Cpu className="w-5 h-5 text-violet-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-violet-800">Verificação de Miners incluída</p>
+                <p className="text-xs text-violet-600 mt-0.5">
+                  Os itens M-001, M-002 e M-003 incluem verificação de ASICs. Após abrir a OS, use a aba <strong>Miners</strong> para registrar o status de cada máquina por SN.
+                </p>
               </div>
             </div>
           )}
@@ -733,6 +756,17 @@ export function NovaOSForm({
                   className="rounded-xl border-gray-200 focus-visible:ring-purple-300" placeholder="P01, G04" />
               </Field>
             </div>
+
+            {/* Asset dropdown for corretiva */}
+            {assetsExistentes.length > 0 && (
+              <AssetDropdown
+                label="Ativo relacionado"
+                value={itemAssets["corretiva"] ?? ""}
+                onChange={(id) => setItemAsset("corretiva", id)}
+                assetsExistentes={assetsExistentes}
+                placeholder="Selecionar ativo relacionado à falha…"
+              />
+            )}
           </div>
 
           <div className="rounded-2xl border p-6 space-y-4" style={{ background: "linear-gradient(135deg,#fff7ed,#fef3c7)", borderColor: "#fed7aa" }}>
@@ -841,7 +875,7 @@ export function NovaOSForm({
         <button type="submit" disabled={loading || !canSubmit}
           className="flex-1 py-3 text-sm text-white font-semibold rounded-xl disabled:opacity-40 transition-all"
           style={{ background: loading ? "#9ca3af" : "linear-gradient(135deg,#1E1B4B 0%,#8B1FA9 100%)" }}>
-          {loading ? (creatingAssets ? "Criando ativos e abrindo OS…" : "Abrindo OS…") : "Abrir Ordem de Serviço"}
+          {loading ? "Abrindo OS…" : "Abrir Ordem de Serviço"}
         </button>
       </div>
     </form>

@@ -1,4 +1,3 @@
-
 export interface ChecklistItem {
   id: string;
   descricao: string;
@@ -28,6 +27,10 @@ export const CHECKLIST_PREVENTIVA: ChecklistItem[] = [
   { id: "P-018", descricao: "Rastrear e registrar parâmetros do fluido refrigerante (Tabela 9.1)", periodicidade: "Anual", subsistema: "Estação de Bombas", referencia: "Manual §9.3.6" },
   { id: "P-019", descricao: "Inspeção geral de todos os componentes e sistemas", periodicidade: "Anual", subsistema: "Geral", referencia: "Manual §9.4.6" },
   { id: "P-020", descricao: "Drenar e substituir fluido refrigerante do sistema (~1.500 L)", periodicidade: "A cada 1-2 anos", subsistema: "Estação de Bombas", referencia: "Manual §9.3.4" },
+  // ── ASICs / Miners ──────────────────────────────────────────────────────────
+  { id: "M-001", descricao: "Verificar status operacional de todos os miners (online/offline/falha)", periodicidade: "Mensal", subsistema: "ASICs / Miners", referencia: "Checklist ASIC Mensal" },
+  { id: "M-002", descricao: "Registrar miners offline — identificar SN e posição no rack", periodicidade: "Mensal", subsistema: "ASICs / Miners", referencia: "Checklist ASIC Mensal" },
+  { id: "M-003", descricao: "Registrar miners com falha — identificar SN, tipo de falha e container", periodicidade: "Mensal", subsistema: "ASICs / Miners", referencia: "Checklist ASIC Mensal" },
 ];
 
 export const CHECKLIST_POR_ID = Object.fromEntries(
@@ -64,11 +67,9 @@ export function itensPorMultiplasPeriodicidades(periodicidades: string[]): Check
   const idsVistos = new Set<string>();
   const resultado: ChecklistItem[] = [];
 
-  // Itera na ordem original do checklist para manter consistência
   for (const item of CHECKLIST_PREVENTIVA) {
     if (idsVistos.has(item.id)) continue;
 
-    // Verifica se alguma das periodicidades selecionadas inclui este item
     const incluir = periodicidades.some((per) => {
       const rotulos = PERIODICIDADE_ITENS[per] ?? [];
       return rotulos.includes(item.periodicidade);
@@ -90,6 +91,11 @@ export function itensPorMultiplasPeriodicidades(periodicidades: string[]): Check
 export function itensParaOS(periodicidades: string | string[]): ChecklistItem[] {
   const arr = Array.isArray(periodicidades) ? periodicidades : [periodicidades];
   return itensPorMultiplasPeriodicidades(arr);
+}
+
+/** Retorna apenas os itens de checklist de miners (M-001, M-002, M-003) */
+export function itensMiners(): ChecklistItem[] {
+  return CHECKLIST_PREVENTIVA.filter((item) => item.id.startsWith("M-"));
 }
 
 export const PERIODICIDADE_LABEL: Record<string, string> = {
@@ -342,6 +348,36 @@ export const INSTRUCOES_MANUAL: Record<string, { titulo: string; passos: string[
       "Após drenagem completa, feche V202.",
       "Reabasteça o sistema com fluido novo conforme procedimento §7.3 do manual.",
       "Ligue a bomba de circulação e verifique pressão estática entre 1,0 e 1,5 bar.",
+    ],
+  },
+  "M-001": {
+    titulo: "Verificar status operacional de todos os miners",
+    passos: [
+      "Acesse o painel de monitoramento do pool de mineração.",
+      "Verifique o total de hashrate reportado vs hashrate esperado.",
+      "Identifique miners offline (hashrate = 0 ou ausentes da lista).",
+      "Identifique miners com hashrate abaixo de 80% do nominal.",
+      "Registre o status de cada miner (Funcionando / Offline / Com Falha) no sistema.",
+    ],
+  },
+  "M-002": {
+    titulo: "Registrar miners offline",
+    passos: [
+      "Para cada miner offline identificado, anote o Serial Number (SN).",
+      "Verifique fisicamente a conexão de energia e rede do miner.",
+      "Tente reiniciar o miner via interface web ou fisicamente.",
+      "Se não retornar online após reinicialização, escale para substituição.",
+      "Registre no sistema: SN, container, posição no rack e ação tomada.",
+    ],
+  },
+  "M-003": {
+    titulo: "Registrar miners com falha",
+    passos: [
+      "Para cada miner com falha, acesse a interface web do equipamento.",
+      "Verifique os logs de erro e temperatura dos hash boards.",
+      "Identifique o tipo de falha: hash board, PSU, temperatura, conectividade.",
+      "Registre no sistema: SN, container, tipo de falha observada.",
+      "Abra OS corretiva se necessário para miner com falha persistente.",
     ],
   },
 };

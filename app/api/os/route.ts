@@ -7,6 +7,8 @@ import { getAssetBindingsForChecklistItems } from "@/lib/assets";
 import { addHours } from "date-fns";
 import { z } from "zod";
 
+const db = prisma as any;
+
 // ─── Schemas de validação ─────────────────────────────────────────────────────
 
 const PERIODICIDADES_VALIDAS = [
@@ -14,13 +16,8 @@ const PERIODICIDADES_VALIDAS = [
   "SEMESTRAL", "ANUAL", "HORAS_2000", "BIENNIAL",
 ] as const;
 
-/**
- * NOVO SCHEMA: OS preventiva agora aceita múltiplas periodicidades.
- * Uma OS representa uma visita real — pode cobrir Mensal + Trimestral + etc.
- */
 const criarOSPreventivaSchema = z.object({
   tipoOS: z.literal("PREVENTIVA"),
-  // Multi-select: array de 1 ou mais periodicidades
   periodicidadesSelecionadas: z.array(z.enum(PERIODICIDADES_VALIDAS)).min(1, "Selecione ao menos uma periodicidade"),
   titulo: z.string().min(5).max(120).optional(),
   descricao: z.string().optional(),
@@ -60,6 +57,39 @@ const criarOSSchema = z.discriminatedUnion("tipoOS", [
   criarOSCoretivaSchema,
 ]);
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+/**
+ * Busca todas as MinerInstances vinculadas a um containerId (se fornecido)
+ * ou a todos os assets do tipo ASIC (isAsicModel = true).
+ *
+ * Retorna um array de { id: string } pronto para createMany em MinerCheckOS.
+ * Nunca lança — em caso de erro retorna array vazio para não bloquear a criação da OS.
+ */
+async function buscarMinerInstancesParaOS(containerId?: string): Promise<string[]> {
+  try {
+    const where: Record<string, unknown> = { status: "ativo" };
+
+    if (containerId) {
+      // Filtra pelos miners do container específico
+      where.containerId = containerId;
+    } else {
+      // Sem container: busca miners vinculados a assets do tipo ASIC
+      where.asset = { isAsicModel: true };
+    }
+
+    const miners = await db.minerInstance.findMany({
+      where,
+      select: { id: true },
+      orderBy: [{ containerId: "asc" }, { serialNumber: "asc" }],
+    });
+
+    return miners.map((m: { id: string }) => m.id);
+  } catch {
+    return [];
+  }
+}
+
 // ─── GET /api/os ──────────────────────────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const { userId } = await auth();
@@ -91,7 +121,7 @@ export async function GET(req: NextRequest) {
       include: {
         responsavel: { select: { id: true, nome: true, avatarUrl: true } },
         abertoPor:   { select: { id: true, nome: true } },
-        _count: { select: { comentarios: true, anexos: true, checklistItems: true } },
+        _count: { select: { comentarios: true, anexos: true, checklistItems: true, minerChecks: true } },
       },
       orderBy: [{ prioridade: "asc" }, { createdAt: "desc" }],
       skip: (page - 1) * limit,
@@ -129,21 +159,22 @@ export async function POST(req: NextRequest) {
   const count  = await prisma.ordemServico.count();
   const numero = gerarNumeroOS(count + 1);
 
+  // ── Busca miners ANTES da transação (evita tx longa) ─────────────────────
+  // Busca os IDs de MinerInstance vinculados ao containerId (ou todos os ASIC ativos)
+  const minerInstanceIds = await buscarMinerInstancesParaOS(data.containerId);
+
   if (data.tipoOS === "PREVENTIVA") {
-    // ── OS Preventiva — NOVO MODELO MULTI-PERIODICIDADE ────────────────────
+    // ── OS Preventiva — MULTI-PERIODICIDADE ────────────────────────────────
     const { periodicidadesSelecionadas } = data;
 
-    // Gera checklist unificado de todas as periodicidades selecionadas
     const itensChecklist = itensPorMultiplasPeriodicidades(periodicidadesSelecionadas);
-    const assetBindings = await getAssetBindingsForChecklistItems(itensChecklist.map((item) => item.id));
+    const assetBindings  = await getAssetBindingsForChecklistItems(itensChecklist.map((item) => item.id));
 
-    // Título automático baseado nas periodicidades
     const labelPeriods = periodicidadesSelecionadas
       .map((p) => PERIODICIDADE_LABEL[p])
       .join(" + ");
     const tituloGerado = data.titulo ?? `Preventiva ${labelPeriods} — ANTSPACE HK3`;
 
-    // Para retrocompatibilidade: guarda a primeira periodicidade no campo legado
     const periodicidadePrincipal = periodicidadesSelecionadas[0];
 
     const os = await prisma.$transaction(async (tx) => {
@@ -155,7 +186,7 @@ export async function POST(req: NextRequest) {
           motivoOS:                  data.motivoOS  ?? "Manutenção preventiva programada.",
           tipoOS:                    "PREVENTIVA",
           periodicidadesSelecionadas: periodicidadesSelecionadas as string[],
-          periodicidadePreventiva:   periodicidadePrincipal as never, // legado
+          periodicidadePreventiva:   periodicidadePrincipal as never,
           prioridade:                data.prioridade,
           dataProgramada:            new Date(data.dataProgramada),
           dataFimProgramada:         data.dataFimProgramada ? new Date(data.dataFimProgramada) : null,
@@ -174,7 +205,7 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // Insere o checklist unificado (sem duplicados, já filtrado em itensPorMultiplasPeriodicidades)
+      // ── Checklist preventivo ──────────────────────────────────────────────
       if (itensChecklist.length > 0) {
         await tx.checklistItemOS.createMany({
           data: itensChecklist.map((item) => ({
@@ -190,11 +221,25 @@ export async function POST(req: NextRequest) {
         });
       }
 
+      // ── MinerCheckOS — criados automaticamente se houver miners ───────────
+      // Garante que cada ASIC vinculado ao containerId (ou ao parque ASIC)
+      // já tenha seu registro na tabela, pronto para o técnico preencher na OS.
+      if (minerInstanceIds.length > 0) {
+        await (tx as any).minerCheckOS.createMany({
+          data: minerInstanceIds.map((minerInstanceId) => ({
+            osId:            novaOS.id,
+            minerInstanceId,
+            status:          "FUNCIONANDO", // default — técnico pode alterar
+          })),
+          skipDuplicates: true, // segurança contra chamadas duplicadas
+        });
+      }
+
       await tx.historicoOS.create({
         data: {
           osId:       novaOS.id,
           statusPara: "ABERTA",
-          observacao: `OS preventiva aberta — periodicidades: ${labelPeriods} (${itensChecklist.length} itens de checklist)`,
+          observacao: `OS preventiva aberta — periodicidades: ${labelPeriods} (${itensChecklist.length} itens de checklist${minerInstanceIds.length > 0 ? `, ${minerInstanceIds.length} miners` : ""})`,
           usuarioId:  usuario.id,
         },
       });
@@ -205,7 +250,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ os, sla: null }, { status: 201 });
   }
 
-  // ── OS Corretiva — COM SLA ──────────────────────────────────────────────────
+  // ── OS Corretiva — COM SLA ────────────────────────────────────────────────
   const { tipoAtividadeCorretiva, dataEmissaoAxia: dataEmissaoStr } = data;
   const dataEmissaoAxia = new Date(dataEmissaoStr);
   const prazoSLAHoras   = PRAZO_HORAS[tipoAtividadeCorretiva] ?? 72;
@@ -237,11 +282,23 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // ── MinerCheckOS para OS corretiva (se tiver containerId com miners) ───
+    if (minerInstanceIds.length > 0) {
+      await (tx as any).minerCheckOS.createMany({
+        data: minerInstanceIds.map((minerInstanceId) => ({
+          osId:            novaOS.id,
+          minerInstanceId,
+          status:          "FUNCIONANDO",
+        })),
+        skipDuplicates: true,
+      });
+    }
+
     await tx.historicoOS.create({
       data: {
         osId:       novaOS.id,
         statusPara: "ABERTA",
-        observacao: `OS corretiva aberta — prazo SLA: ${prazoSLAHoras}h (${tipoAtividadeCorretiva})`,
+        observacao: `OS corretiva aberta — prazo SLA: ${prazoSLAHoras}h (${tipoAtividadeCorretiva})${minerInstanceIds.length > 0 ? ` — ${minerInstanceIds.length} miners vinculados` : ""}`,
         usuarioId:  usuario.id,
       },
     });

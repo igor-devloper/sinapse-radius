@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import {
   Calendar, Clock, CheckCircle2, AlertTriangle, FileText,
-  Tag, Server, Cpu, ArrowLeft, CalendarRange, Layers, Package2,
+  Tag, Server, Cpu, ArrowLeft, CalendarRange, Layers,
 } from "lucide-react";
 import { AtualizarStatusOS } from "@/components/os/atualizar-status";
 import { ComentariosOS } from "@/components/os/comentarios";
@@ -20,6 +20,8 @@ import { EditarDatasOS } from "@/components/os/editar-datas-os";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+
+const db = prisma as any;
 
 const prioridadeMap: Record<string, { label: string; class: string; dot: string }> = {
   CRITICA: { label: "Crítica", class: "bg-red-100 text-red-700 border-red-200",         dot: "bg-red-500" },
@@ -42,8 +44,10 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
     where: { clerkId: userId! }, select: { cargo: true },
   });
 
+  const osId = (await params).id;
+
   const os = await prisma.ordemServico.findUnique({
-    where: { id: (await params).id },
+    where: { id: osId },
     include: {
       responsavel: { select: { id: true, nome: true, email: true, cargo: true, avatarUrl: true } },
       abertoPor:   { select: { id: true, nome: true, email: true } },
@@ -65,6 +69,28 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
 
   if (!os) notFound();
 
+  // ── Detectar se esta OS possui miners vinculados ──────────────────────────
+  //
+  // NOVO CRITÉRIO: verificamos diretamente se existem registros em MinerCheckOS
+  // para esta OS. Esses registros são criados automaticamente no POST /api/os
+  // quando há MinerInstances vinculadas ao containerId (ou ao parque ASIC).
+  //
+  // Isso elimina a dependência da periodicidade "MENSAL" e garante que
+  // qualquer OS (preventiva ou corretiva) com miners seja detectada corretamente.
+  const minerCheckCount = await db.minerCheckOS.count({ where: { osId: os.id } });
+  const hasMinerChecklist = minerCheckCount > 0;
+
+  // Busca o assetId do modelo ASIC principal para passar ao componente
+  // (usado apenas como referência visual — o carregamento real vem dos checks)
+  let asicAssetId: string | null = null;
+  if (hasMinerChecklist) {
+    const firstCheck = await db.minerCheckOS.findFirst({
+      where: { osId: os.id },
+      select: { minerInstance: { select: { assetId: true } } },
+    });
+    asicAssetId = firstCheck?.minerInstance?.assetId ?? null;
+  }
+
   const sla =
     os.tipoOS === "CORRETIVA" && os.dataEmissaoAxia && os.tipoAtividadeCorretiva
       ? calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva)
@@ -72,7 +98,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
 
   const prioridade = prioridadeMap[os.prioridade];
   const status = statusMap[os.status];
-  const canEdit = ["ADMIN","SUPERVISOR","TECNICO"].includes(usuario?.cargo ?? "");
+  const canEdit = ["ADMIN", "SUPERVISOR", "TECNICO"].includes(usuario?.cargo ?? "");
   const isPreventiva = os.tipoOS === "PREVENTIVA";
   const isConcluida = os.status === "CONCLUIDA";
 
@@ -82,16 +108,6 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
       : os.periodicidadePreventiva
         ? [os.periodicidadePreventiva]
         : [];
-
-  // Distinct assets from checklist items
-  const assetsMap = new Map<string, { id: string; nome: string; codigo: string; fotoUrl: string | null; itens: string[] }>();
-  for (const item of os.checklistItems) {
-    if (!item.asset) continue;
-    const existing = assetsMap.get(item.asset.id);
-    if (existing) { existing.itens.push(item.itemId); }
-    else { assetsMap.set(item.asset.id, { ...item.asset, itens: [item.itemId] }); }
-  }
-  const assetsDistintos = Array.from(assetsMap.values());
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
@@ -142,6 +158,13 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                     </span>
                   );
                 })}
+                {/* Badge visual para OS com miners */}
+                {hasMinerChecklist && (
+                  <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-semibold border bg-cyan-50 text-cyan-700 border-cyan-200">
+                    <Cpu className="w-3 h-3" />
+                    {minerCheckCount} Miners
+                  </span>
+                )}
               </div>
 
               <h1 className="text-xl font-bold text-gray-900 leading-tight">{os.titulo}</h1>
@@ -158,26 +181,6 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
               <DownloadRelatorioButton osId={os.id} numero={os.numero} status={os.status} />
             </div>
           </div>
-
-          {/* ── Ativos da OS — destaque visual ────────────────────────── */}
-          {/* {assetsDistintos.length > 0 && (
-            <div className="mt-5 rounded-2xl border border-violet-200 bg-gradient-to-br from-violet-50 to-purple-50 p-4">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ background: "linear-gradient(135deg,#1E1B4B,#8B1FA9)" }}>
-                  <Package2 className="w-3.5 h-3.5 text-white" />
-                </div>
-                <p className="text-sm font-bold text-violet-900">
-                  {assetsDistintos.length} ativo{assetsDistintos.length !== 1 ? "s" : ""} nesta OS
-                </p>
-                <span className="ml-auto text-xs text-violet-500 font-medium">Clique para detalhar →</span>
-              </div>
-              <div className="flex flex-wrap gap-3">
-                {assetsDistintos.map((asset) => (
-                  <AssetCard key={asset.id} asset={asset} />
-                ))}
-              </div>
-            </div>
-          )} */}
 
           {/* Multi-periodicidade banner */}
           {isPreventiva && periodicidades.length > 1 && (
@@ -223,7 +226,24 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
           {sla && <SLABadge sla={sla} showProgress />}
 
           {isPreventiva ? (
-            <ChecklistPreventiva osId={os.id} items={os.checklistItems} canEdit={canEdit && !isConcluida} />
+            <ChecklistPreventiva
+              osId={os.id}
+              items={os.checklistItems}
+              canEdit={canEdit && !isConcluida}
+              hasMinerChecklist={hasMinerChecklist}
+              asicAssetId={asicAssetId}
+              containerId={os.containerId}
+            />
+          ) : hasMinerChecklist ? (
+            // OS corretiva com miners — exibe o checklist de miners direto
+            <ChecklistPreventiva
+              osId={os.id}
+              items={[]}
+              canEdit={canEdit && !isConcluida}
+              hasMinerChecklist={hasMinerChecklist}
+              asicAssetId={asicAssetId}
+              containerId={os.containerId}
+            />
           ) : (
             <Card className="border-gray-100 shadow-sm rounded-2xl">
               <CardHeader className="pb-3">
@@ -358,31 +378,6 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
 
           <HistoricoTimeline historico={os.historicoOS} />
         </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── Asset Card (client-side dialog trigger wrapper) ─────────────────────────
-// We render a server component that imports the client card
-function AssetCard({ asset }: {
-  asset: { id: string; nome: string; codigo: string; fotoUrl: string | null; itens: string[] };
-}) {
-  return (
-    <div className="flex items-center gap-3 bg-white rounded-xl border border-violet-100 px-3 py-2.5 min-w-[180px] max-w-[240px] shadow-sm">
-      <div className="relative h-10 w-10 shrink-0 overflow-hidden rounded-lg border border-violet-100 bg-violet-50">
-        {asset.fotoUrl ? (
-          <Image src={asset.fotoUrl} alt={asset.nome} fill className="object-cover" sizes="40px" unoptimized />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center">
-            <Package2 className="h-5 w-5 text-violet-300" />
-          </div>
-        )}
-      </div>
-      <div className="min-w-0">
-        <p className="text-xs font-bold text-gray-900 truncate leading-tight">{asset.nome}</p>
-        <p className="text-[11px] font-mono text-violet-600 mt-0.5">{asset.codigo}</p>
-        <p className="text-[10px] text-gray-400 mt-0.5">{asset.itens.length} item{asset.itens.length !== 1 ? "s" : ""}</p>
       </div>
     </div>
   );

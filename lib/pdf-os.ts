@@ -9,20 +9,15 @@ import autoTable from "jspdf-autotable"
 // ─────────────────────────────────────────────
 type Color = [number, number, number]
 const C = {
-  // Acento Radius (usado com moderação)
-  orange:      [234, 88,  12]  as Color,   // laranja Radius — só destaques
+  orange:      [234, 88,  12]  as Color,
   orangeLight: [251, 146, 60]  as Color,
-
-  // Neutros corporativos (base do design)
-  charcoal:    [28,  28,  28]  as Color,   // títulos / headers
-  dark:        [51,  51,  51]  as Color,   // texto corrido
-  slate:       [80,  90, 105]  as Color,   // subttítulos
-  muted:       [120, 125, 135] as Color,   // labels auxiliares
-  border:      [220, 222, 226] as Color,   // linhas e divisores
-  surface:     [248, 248, 249] as Color,   // fundos de cards (cinza claríssimo)
+  charcoal:    [28,  28,  28]  as Color,
+  dark:        [51,  51,  51]  as Color,
+  slate:       [80,  90, 105]  as Color,
+  muted:       [120, 125, 135] as Color,
+  border:      [220, 222, 226] as Color,
+  surface:     [248, 248, 249] as Color,
   white:       [255, 255, 255] as Color,
-
-  // Semânticas (mantidas)
   green:       [22,  163, 74]  as Color,
   red:         [220, 38,  38]  as Color,
   yellow:      [202, 138,  4]  as Color,
@@ -209,14 +204,111 @@ async function urlToDataURL(url: string): Promise<string> {
     reader.readAsDataURL(blob)
   })
 }
+
 function detectFormat(d: string): "PNG" | "JPEG" { return /^data:image\/png/i.test(d) ? "PNG" : "JPEG" }
 function stripPrefix(d: string) { return d.replace(/^data:image\/\w+;base64,/, "") }
-async function imageDims(d: string): Promise<{ w: number; h: number }> {
+
+/**
+ * Lê a orientação EXIF de um JPEG e retorna o grau de rotação necessário
+ * para deixar a imagem "em pé" (0, 90, 180 ou 270).
+ */
+function getExifRotation(base64: string): number {
+  try {
+    // Decodifica somente os primeiros bytes para encontrar APP1/EXIF
+    const binary = atob(base64.substring(0, 65536))
+    const bytes = new Uint8Array(binary.length)
+    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
+
+    // Verifica SOI marker
+    if (bytes[0] !== 0xff || bytes[1] !== 0xd8) return 0
+
+    let offset = 2
+    while (offset < bytes.length - 4) {
+      if (bytes[offset] !== 0xff) break
+      const marker = bytes[offset + 1]
+      const segLen = (bytes[offset + 2] << 8) | bytes[offset + 3]
+
+      if (marker === 0xe1) {
+        // APP1 — verifica "Exif\0\0"
+        const exifHeader = String.fromCharCode(...bytes.slice(offset + 4, offset + 10))
+        if (exifHeader.startsWith("Exif")) {
+          const tiffOffset = offset + 10
+          const littleEndian = bytes[tiffOffset] === 0x49
+
+          const read16 = (o: number) =>
+            littleEndian
+              ? (bytes[tiffOffset + o] | (bytes[tiffOffset + o + 1] << 8))
+              : ((bytes[tiffOffset + o] << 8) | bytes[tiffOffset + o + 1])
+          const read32 = (o: number) =>
+            littleEndian
+              ? (bytes[tiffOffset + o] |
+                 (bytes[tiffOffset + o + 1] << 8) |
+                 (bytes[tiffOffset + o + 2] << 16) |
+                 (bytes[tiffOffset + o + 3] << 24))
+              : ((bytes[tiffOffset + o] << 24) |
+                 (bytes[tiffOffset + o + 1] << 16) |
+                 (bytes[tiffOffset + o + 2] << 8) |
+                 bytes[tiffOffset + o + 3])
+
+          const ifdOffset = read32(4)
+          const numEntries = read16(ifdOffset)
+
+          for (let i = 0; i < numEntries; i++) {
+            const entryOffset = ifdOffset + 2 + i * 12
+            const tag = read16(entryOffset)
+            if (tag === 0x0112) {
+              // Orientation tag
+              const orientation = read16(entryOffset + 8)
+              const rotMap: Record<number, number> = {
+                1: 0, 3: 180, 6: 90, 8: 270,
+                2: 0, 4: 180, 5: 90, 7: 270,
+              }
+              return rotMap[orientation] ?? 0
+            }
+          }
+        }
+      }
+      offset += 2 + segLen
+    }
+  } catch {
+    // silencioso
+  }
+  return 0
+}
+
+/**
+ * Recebe um dataURL de imagem, aplica a rotação EXIF via canvas e
+ * retorna { dataUrl, width, height } já corrigidos.
+ */
+async function normalizeImageOrientation(
+  dataUrl: string
+): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise((resolve) => {
     const img = new Image()
-    img.onload = () => resolve({ w: img.width, h: img.height })
-    img.onerror = () => resolve({ w: 1200, h: 900 })
-    img.src = d
+    img.onload = () => {
+      const rotation = /^data:image\/jpeg/i.test(dataUrl)
+        ? getExifRotation(dataUrl.replace(/^data:image\/\w+;base64,/, ""))
+        : 0
+
+      const needsRotate = rotation === 90 || rotation === 270
+      const cw = needsRotate ? img.height : img.width
+      const ch = needsRotate ? img.width  : img.height
+
+      const canvas = document.createElement("canvas")
+      canvas.width  = cw
+      canvas.height = ch
+      const ctx = canvas.getContext("2d")!
+
+      ctx.save()
+      ctx.translate(cw / 2, ch / 2)
+      ctx.rotate((rotation * Math.PI) / 180)
+      ctx.drawImage(img, -img.width / 2, -img.height / 2)
+      ctx.restore()
+
+      resolve({ dataUrl: canvas.toDataURL("image/jpeg", 0.92), width: cw, height: ch })
+    }
+    img.onerror = () => resolve({ dataUrl, width: 800, height: 600 })
+    img.src = dataUrl
   })
 }
 
@@ -314,7 +406,6 @@ export async function generateOSPDF(data: OSReportData) {
   const H = doc.internal.pageSize.height
   const MARGIN = 13
 
-  // Carrega logos em paralelo com geração de textos IA
   const [radiusLogoResult, creativaLogoResult, aiTexts] = await Promise.all([
     loadSvgAsPng("/logo-radius.svg"),
     loadSvgAsPng("/logo-criativa.svg"),
@@ -335,17 +426,13 @@ export async function generateOSPDF(data: OSReportData) {
   // ══════════════════════════════════════════
 
   function drawHeader(pageTitle: string) {
-    // Fundo branco
     doc.setFillColor(...C.white)
     doc.rect(0, 0, W, 20, "F")
-    // Linha laranja fina no topo (acento Radius)
     doc.setFillColor(...C.orange)
     doc.rect(0, 0, W, 1.5, "F")
-    // Linha divisória inferior (cinza)
     doc.setFillColor(...C.border)
     doc.rect(0, 20, W, 0.3, "F")
 
-    // Logo Radius
     if (radiusPng) {
       const lH = 11
       const lW = lH * radiusAspect
@@ -356,7 +443,6 @@ export async function generateOSPDF(data: OSReportData) {
       doc.text("RADIUS MINING", MARGIN, 13)
     }
 
-    // Título da página (direita) — cinza escuro, sem laranja
     doc.setFontSize(8); doc.setFont("helvetica", "bold")
     doc.setTextColor(...C.charcoal)
     doc.text(pageTitle.toUpperCase(), W - MARGIN, 10, { align: "right" })
@@ -367,16 +453,13 @@ export async function generateOSPDF(data: OSReportData) {
 
   function drawFooter() {
     const total = doc.getNumberOfPages()
-    // p=1 é a capa (sem footer padrão), p>=2 recebem footer
     for (let p = 2; p <= total; p++) {
       doc.setPage(p)
 
-      // Linha divisória fina cinza
       doc.setDrawColor(...C.border)
       doc.setLineWidth(0.4)
       doc.line(MARGIN, H - 12, W - MARGIN, H - 12)
 
-      // Logo Criativa + texto (esquerda)
       if (criativaPng) {
         const fH = 4.5
         const fW = fH * criativaAspect
@@ -390,7 +473,6 @@ export async function generateOSPDF(data: OSReportData) {
         doc.text("Relatório gerado por Sinapse Criativa", MARGIN, H - 6.5)
       }
 
-      // Paginação (direita)
       doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
       doc.setTextColor(...C.muted)
       doc.text(`Página ${p - 1} de ${total - 1}`, W - MARGIN, H - 6.5, { align: "right" })
@@ -398,13 +480,11 @@ export async function generateOSPDF(data: OSReportData) {
   }
 
   function sectionBar(y: number, title: string): number {
-    // Barra vertical laranja fina (acento Radius, sutil)
     doc.setFillColor(...C.orange)
     doc.rect(MARGIN, y, 2, 7, "F")
     doc.setFontSize(8.5); doc.setFont("helvetica", "bold")
     doc.setTextColor(...C.charcoal)
     doc.text(title.toUpperCase(), MARGIN + 5, y + 5.2)
-    // Linha divisória cinza
     doc.setDrawColor(...C.border)
     doc.setLineWidth(0.3)
     doc.line(MARGIN + 5, y + 7.5, W - MARGIN, y + 7.5)
@@ -427,7 +507,6 @@ export async function generateOSPDF(data: OSReportData) {
     doc.setDrawColor(...C.border)
     doc.setLineWidth(0.3)
     doc.roundedRect(x, y, w, 14, 1.5, 1.5, "S")
-    // Barra superior fina (acento neutro por padrão)
     doc.setFillColor(...accentColor)
     doc.roundedRect(x, y, w, 1.2, 1.5, 1.5, "F")
     doc.rect(x, y + 1.2, w, 0, "F")
@@ -441,18 +520,14 @@ export async function generateOSPDF(data: OSReportData) {
   }
 
   // ══════════════════════════════════════════
-  // CAPA — fundo branco, identidade corporativa
+  // CAPA
   // ══════════════════════════════════════════
-
-  // Fundo totalmente branco
   doc.setFillColor(...C.white)
   doc.rect(0, 0, W, H, "F")
 
-  // Linha de acento laranja no topo (fina)
   doc.setFillColor(...C.orange)
   doc.rect(0, 0, W, 3, "F")
 
-  // Logo Radius — centralizada, área superior
   const logoY = 28
   if (radiusPng) {
     const lH = 22
@@ -464,12 +539,10 @@ export async function generateOSPDF(data: OSReportData) {
     doc.text("RADIUS MINING", W / 2, logoY + 16, { align: "center" })
   }
 
-  // Linha divisória fina abaixo da logo
   doc.setDrawColor(...C.border)
   doc.setLineWidth(0.5)
   doc.line(MARGIN + 20, logoY + 28, W - MARGIN - 20, logoY + 28)
 
-  // Título principal
   const tY = logoY + 42
   doc.setFontSize(15); doc.setFont("helvetica", "bold")
   doc.setTextColor(...C.charcoal)
@@ -479,17 +552,14 @@ export async function generateOSPDF(data: OSReportData) {
   )
   doc.text(tituloLines, W / 2, tY, { align: "center" })
 
-  // Linha decorativa laranja (fina, moderada)
   const lineY = tY + tituloLines.length * 7.5 + 5
   doc.setFillColor(...C.orange)
   doc.rect(W / 2 - 22, lineY, 44, 0.7, "F")
 
-  // Competência
   doc.setFontSize(10); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.slate)
   doc.text("Competência: " + competencia, W / 2, lineY + 9, { align: "center" })
 
-  // Cards de info — fundo cinza claríssimo, sem laranja pesado
   const cardY = lineY + 18
   const cardW3 = (W - MARGIN * 2 - 9) / 3
 
@@ -508,22 +578,20 @@ export async function generateOSPDF(data: OSReportData) {
     doc.text(lines[0] ?? "—", x + 3, y + 11)
   }
 
-  coverCard(MARGIN,                     cardY, cardW3, "Cliente",   "AXIA")
-  coverCard(MARGIN + cardW3 + 4.5,      cardY, cardW3, "Operação",  "Radius Mining")
-  coverCard(MARGIN + (cardW3 + 4.5) * 2, cardY, cardW3, "Local",   "Casa Nova – BA")
+  coverCard(MARGIN,                      cardY, cardW3, "Cliente",   "AXIA")
+  coverCard(MARGIN + cardW3 + 4.5,       cardY, cardW3, "Operação",  "Radius Mining")
+  coverCard(MARGIN + (cardW3 + 4.5) * 2, cardY, cardW3, "Local",    "Casa Nova – BA")
 
   const card2Y = cardY + 19
   const cardW2 = (W - MARGIN * 2 - 6) / 2
   coverCard(MARGIN,              card2Y, cardW2, "Tipo de Manutenção", tipoVisita)
   coverCard(MARGIN + cardW2 + 6, card2Y, cardW2, "Número da OS",       data.numero)
 
-  // OS Título
   doc.setFontSize(8); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.slate)
   const osTitleLines = doc.splitTextToSize(data.titulo, W - MARGIN * 2)
   doc.text(osTitleLines.slice(0, 2), W / 2, card2Y + 33, { align: "center" })
 
-  // Pills de status/prioridade
   const statusColors: Record<string, Color> = {
     CONCLUIDA: C.green, EM_ANDAMENTO: C.blue, ABERTA: C.orange,
     AGUARDANDO_PECA: C.amber, PAUSADA: C.muted, CANCELADA: C.red,
@@ -540,7 +608,6 @@ export async function generateOSPDF(data: OSReportData) {
   pill((W - totalPillW) / 2,            pillY, labelStatus, statusColors[data.status] ?? C.muted)
   pill((W - totalPillW) / 2 + sw1 + 6, pillY, labelPrio,   prioColors[data.prioridade] ?? C.muted)
 
-  // Responsável
   if (data.responsavel) {
     doc.setFontSize(8); doc.setFont("helvetica", "bold")
     doc.setTextColor(...C.charcoal)
@@ -549,13 +616,10 @@ export async function generateOSPDF(data: OSReportData) {
     doc.text(data.responsavel.cargo.toLowerCase(), W / 2, pillY + 19, { align: "center" })
   }
 
-  // ── Rodapé da capa ──
-  // Linha divisória fina
   doc.setDrawColor(...C.border)
   doc.setLineWidth(0.4)
   doc.line(MARGIN, H - 24, W - MARGIN, H - 24)
 
-  // Logo Criativa + texto (esquerda, discreto)
   if (criativaPng) {
     const fH = 5.5
     const fW = fH * criativaAspect
@@ -569,12 +633,10 @@ export async function generateOSPDF(data: OSReportData) {
     doc.text("Relatório gerado por Sinapse Criativa", MARGIN, H - 15.5)
   }
 
-  // Data geração (direita)
   doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.muted)
   doc.text(`Gerado em ${geradoEm}`, W - MARGIN, H - 15.5, { align: "right" })
 
-  // Linha laranja base (muito fina)
   doc.setFillColor(...C.orange)
   doc.rect(0, H - 6, W, 6, "F")
   doc.setFontSize(7); doc.setFont("helvetica", "bold")
@@ -593,7 +655,6 @@ export async function generateOSPDF(data: OSReportData) {
   const colW = (W - MARGIN * 2 - 6) / 2
   const infoH = 13
 
-  // Grid de informações
   infoCard(MARGIN,            y, colW, "Data da Visita",     fmtDate(data.dataConclusao), C.charcoal)
   infoCard(MARGIN + colW + 6, y, colW, "Local da Operação",  "Casa Nova – BA", C.charcoal)
   y += infoH + 3
@@ -610,7 +671,6 @@ export async function generateOSPDF(data: OSReportData) {
   infoCard(MARGIN + colW + 6, y, colW, "Técnico Responsável", data.responsavel?.nome ?? "—", C.charcoal)
   y += infoH + 6
 
-  // ── Resumo Executivo ──
   y = sectionBar(y, "2. Resumo Executivo")
 
   const resumoParas = aiTexts.resumoExecutivo.split("\n").filter(Boolean)
@@ -630,7 +690,6 @@ export async function generateOSPDF(data: OSReportData) {
   drawHeader("Atividades e Ocorrências")
   y = 26
 
-  // ── Atividades Realizadas (Checklist agrupado) ──
   if (data.checklistItems.length > 0) {
     y = sectionBar(y, "3. Atividades Realizadas")
 
@@ -640,7 +699,6 @@ export async function generateOSPDF(data: OSReportData) {
     const pendente = data.checklistItems.filter((i) => i.status === "PENDENTE").length
     const pct      = total > 0 ? Math.round((ok / total) * 100) : 0
 
-    // Minigrid resumo
     const mCardW = (W - MARGIN * 2 - 9) / 4
     ;[
       { label: "Itens Inspecionados", value: String(total),    color: C.charcoal },
@@ -663,7 +721,6 @@ export async function generateOSPDF(data: OSReportData) {
     })
     y += 20
 
-    // Barra de progresso
     doc.setFontSize(7.5); doc.setFont("helvetica", "bold")
     doc.setTextColor(...C.charcoal)
     doc.text(`Conformidade Geral: ${pct}%`, MARGIN, y + 3.5)
@@ -674,7 +731,6 @@ export async function generateOSPDF(data: OSReportData) {
     if (barFill > 0) doc.roundedRect(MARGIN + 46, y, barFill, 4, 1, 1, "F")
     y += 9
 
-    // Tabela por subsistema
     const grupos: Record<string, typeof data.checklistItems> = {}
     for (const item of data.checklistItems) { (grupos[item.subsistema] ??= []).push(item) }
 
@@ -698,8 +754,7 @@ export async function generateOSPDF(data: OSReportData) {
         head: [["ID", "Descrição / Ativo", "Periodicidade", "Status", "Observação"]],
         body: items.map((item) => [
           item.itemId,
-          `${item.descricao}${item.assetNome ? `
-Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : ""}`,
+          `${item.descricao}${item.assetNome ? `\nAtivo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : ""}`,
           item.periodicidade,
           checklistStatusLabel(item.status),
           item.observacao || "—",
@@ -729,7 +784,6 @@ Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : "
     }
   }
 
-  // ── Ocorrências Identificadas ──
   if (data.comentarios.length > 0) {
     if (y > H - 50) { doc.addPage(); drawHeader("Ocorrências"); y = 26; }
     y = sectionBar(y, "4. Ocorrências Identificadas")
@@ -769,7 +823,6 @@ Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : "
   drawHeader("Impacto Operacional e Conclusão")
   y = 26
 
-  // ── Impacto Operacional ──
   y = sectionBar(y, "5. Impacto Operacional")
 
   const impactoParas = aiTexts.impactoOperacional.split("\n").filter(Boolean)
@@ -782,7 +835,6 @@ Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : "
     y += lines.length * 4.5 + 3
   }
 
-  // SLA (apenas corretivas)
   if (data.sla.isCorretiva) {
     y += 2
     if (y > H - 40) { doc.addPage(); drawHeader("SLA"); y = 26; }
@@ -813,7 +865,6 @@ Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : "
     y += 28
   }
 
-  // ── Conclusão Técnica ──
   if (y > H - 50) { doc.addPage(); drawHeader("Conclusão Técnica"); y = 26; }
   y = sectionBar(y, "7. Conclusão Técnica")
 
@@ -827,7 +878,6 @@ Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : "
     y += lines.length * 4.5 + 3
   }
 
-  // Assinatura / fechamento
   y += 6
   if (y > H - 40) { doc.addPage(); drawHeader("Assinatura"); y = 26; }
 
@@ -836,7 +886,6 @@ Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : "
   doc.setDrawColor(...C.border)
   doc.setLineWidth(0.3)
   doc.roundedRect(MARGIN, y, W - MARGIN * 2, 26, 2, 2, "S")
-  // Barra lateral laranja fina (acento)
   doc.setFillColor(...C.orange)
   doc.roundedRect(MARGIN, y, 2, 26, 2, 2, "F")
 
@@ -856,7 +905,6 @@ Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : "
   }
   y += 32
 
-  // ── Histórico de Status ──
   if (data.historico.length > 0) {
     if (y > H - 45) { doc.addPage(); drawHeader("Histórico de Status"); y = 26; }
     y = sectionBar(y, "Histórico de Status da OS")
@@ -887,70 +935,177 @@ Ativo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : "
   }
 
   // ══════════════════════════════════════════
-  // REGISTRO FOTOGRÁFICO
+  // REGISTRO FOTOGRÁFICO — 1 ou 2 por página
   // ══════════════════════════════════════════
   const imagens = data.anexos.filter((a) => a.tipo.startsWith("image/"))
   const pdfsAnexos = data.anexos.filter((a) => a.tipo === "application/pdf")
 
   if (imagens.length > 0) {
-    doc.addPage()
-    drawHeader("Registro Fotográfico")
-    y = 26
-    y = sectionBar(y, "6. Registro Fotográfico")
+    // Área útil disponível por foto (descontando header, footer e legendas)
+    const PHOTO_MARGIN_TOP = 26    // abaixo do header
+    const PHOTO_MARGIN_BOT = 18    // acima do footer
+    const USABLE_H = H - PHOTO_MARGIN_TOP - PHOTO_MARGIN_BOT
+    const USABLE_W = W - MARGIN * 2
+    const CAPTION_H = 10           // altura reservada para legenda + gap
+    const GAP = 6                  // espaço entre as 2 fotos quando lado a lado
 
-    // Grid 2 colunas para imagens
-    const imgColW = (W - MARGIN * 2 - 4) / 2
-    let col = 0
+    /**
+     * Calcula as dimensões de renderização respeitando aspect ratio,
+     * limitado a maxW × maxH.
+     */
+    function fitDims(
+      imgW: number, imgH: number,
+      maxW: number, maxH: number
+    ): { w: number; h: number } {
+      const scale = Math.min(maxW / imgW, maxH / imgH)
+      return { w: imgW * scale, h: imgH * scale }
+    }
 
-    for (const img of imagens) {
-      if (col === 0 && y > H - 80) {
-        doc.addPage(); drawHeader("Registro Fotográfico (cont.)"); y = 26
-      }
+    // Pré-carrega e normaliza todas as imagens (EXIF + canvas)
+    type LoadedImage = {
+      nome: string
+      dataUrl: string
+      fmt: "PNG" | "JPEG"
+      clean: string
+      w: number
+      h: number
+      isLandscape: boolean
+    }
 
-      const imgX = MARGIN + col * (imgColW + 4)
-      const imgY = y
-
-      try {
-        const proxyUrl = `/api/files/anexo?src=${encodeURIComponent(img.url)}&filename=${encodeURIComponent(img.nome)}&inline=1`
-        const dataUrl = await urlToDataURL(proxyUrl)
-        const fmtImg  = detectFormat(dataUrl)
-        const clean   = stripPrefix(dataUrl)
-        const dims    = await imageDims(dataUrl)
-        const maxH    = 58
-        const scale   = Math.min(imgColW / dims.w, maxH / dims.h)
-        const iw = dims.w * scale
-        const ih = dims.h * scale
-        const ix = imgX + (imgColW - iw) / 2
-
-        // Moldura
-        doc.setFillColor(...C.border)
-        doc.roundedRect(imgX, imgY, imgColW, ih + 8, 1.5, 1.5, "F")
-        doc.addImage(clean, fmtImg, ix, imgY + 3, iw, ih - 3, undefined, "FAST")
-
-        // Legenda
-        doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
-        doc.setTextColor(...C.muted)
-        const nomeFit = doc.splitTextToSize(img.nome, imgColW - 4)
-        doc.text(nomeFit[0], imgX + 2, imgY + ih + 6)
-
-        if (col === 0) {
-          col = 1
-        } else {
-          col = 0
-          y += ih + 14
+    const loadedImages: Array<LoadedImage | null> = await Promise.all(
+      imagens.map(async (img) => {
+        try {
+          const proxyUrl = `/api/files/anexo?src=${encodeURIComponent(img.url)}&filename=${encodeURIComponent(img.nome)}&inline=1`
+          const rawDataUrl = await urlToDataURL(proxyUrl)
+          const { dataUrl, width, height } = await normalizeImageOrientation(rawDataUrl)
+          return {
+            nome: img.nome,
+            dataUrl,
+            fmt: detectFormat(dataUrl) as "PNG" | "JPEG",
+            clean: stripPrefix(dataUrl),
+            w: width,
+            h: height,
+            isLandscape: width >= height,
+          }
+        } catch {
+          return null
         }
-      } catch {
-        doc.setFontSize(7.5); doc.setTextColor(...C.red)
-        doc.text("Imagem indisponível", imgX + 3, imgY + 10)
-        col = col === 0 ? 1 : 0
-        if (col === 0) y += 20
+      })
+    )
+
+    // Agrupa imagens em "slots" de página:
+    // - Landscape (ou sem par) → 1 por página (ocupa toda a largura)
+    // - Portrait  → até 2 por página lado a lado
+    type PageSlot =
+      | { type: "single"; img: LoadedImage }
+      | { type: "double"; left: LoadedImage; right: LoadedImage }
+      | { type: "error";  nome: string }
+
+    const slots: PageSlot[] = []
+    const queue = loadedImages.slice()
+
+    while (queue.length > 0) {
+      const item = queue.shift()
+      if (!item) { slots.push({ type: "error", nome: "desconhecido" }); continue; }
+
+      if (item.isLandscape) {
+        // Landscape sempre sozinha
+        slots.push({ type: "single", img: item })
+      } else {
+        // Portrait: tenta parear com a próxima portrait
+        const nextIdx = queue.findIndex((q) => q !== null && !q.isLandscape)
+        if (nextIdx !== -1) {
+          const pair = queue.splice(nextIdx, 1)[0]!
+          slots.push({ type: "double", left: item, right: pair })
+        } else {
+          // Sem par, coloca sozinha centralizada
+          slots.push({ type: "single", img: item })
+        }
       }
     }
-    if (col === 1) y += 70 // fecha última linha de imagens incompleta
+
+    // Renderiza cada slot em sua própria página
+    let firstPhotoPage = true
+    for (const slot of slots) {
+      doc.addPage()
+      if (firstPhotoPage) {
+        drawHeader("Registro Fotográfico")
+        firstPhotoPage = false
+        y = PHOTO_MARGIN_TOP
+        y = sectionBar(y, "6. Registro Fotográfico")
+      } else {
+        drawHeader("Registro Fotográfico (cont.)")
+        y = PHOTO_MARGIN_TOP
+      }
+
+      const availableH = H - y - PHOTO_MARGIN_BOT - CAPTION_H
+
+      if (slot.type === "error") {
+        doc.setFontSize(8); doc.setTextColor(...C.red)
+        doc.text("Imagem indisponível", MARGIN, y + 10)
+        continue
+      }
+
+      if (slot.type === "single") {
+        const { img } = slot
+        const { w: rw, h: rh } = fitDims(img.w, img.h, USABLE_W, availableH)
+        const imgX = MARGIN + (USABLE_W - rw) / 2
+        const imgY = y + (availableH - rh) / 2
+
+        // Moldura com sombra sutil
+        doc.setFillColor(...C.border)
+        doc.roundedRect(imgX - 1.5, imgY - 1.5, rw + 3, rh + 3, 2, 2, "F")
+        doc.addImage(img.clean, img.fmt, imgX, imgY, rw, rh, undefined, "FAST")
+
+        // Legenda
+        doc.setFontSize(7.5); doc.setFont("helvetica", "normal")
+        doc.setTextColor(...C.muted)
+        const nomeFit = doc.splitTextToSize(img.nome, USABLE_W)
+        doc.text(nomeFit[0], W / 2, imgY + rh + 7, { align: "center" })
+      }
+
+      if (slot.type === "double") {
+        const colMaxW = (USABLE_W - GAP) / 2
+        const { left, right } = slot
+
+        const leftFit  = fitDims(left.w,  left.h,  colMaxW, availableH)
+        const rightFit = fitDims(right.w, right.h, colMaxW, availableH)
+
+        // Alinha pelo topo, centraliza horizontalmente em cada coluna
+        const leftX  = MARGIN + (colMaxW - leftFit.w)  / 2
+        const rightX = MARGIN + colMaxW + GAP + (colMaxW - rightFit.w) / 2
+        const photoY = y
+
+        // Molduras
+        doc.setFillColor(...C.border)
+        doc.roundedRect(leftX - 1.5,  photoY - 1.5, leftFit.w  + 3, leftFit.h  + 3, 2, 2, "F")
+        doc.roundedRect(rightX - 1.5, photoY - 1.5, rightFit.w + 3, rightFit.h + 3, 2, 2, "F")
+
+        doc.addImage(left.clean,  left.fmt,  leftX,  photoY, leftFit.w,  leftFit.h,  undefined, "FAST")
+        doc.addImage(right.clean, right.fmt, rightX, photoY, rightFit.w, rightFit.h, undefined, "FAST")
+
+        // Legendas
+        doc.setFontSize(7.5); doc.setFont("helvetica", "normal")
+        doc.setTextColor(...C.muted)
+        const maxLegW = colMaxW - 4
+
+        const leftCaption  = doc.splitTextToSize(left.nome,  maxLegW)
+        const rightCaption = doc.splitTextToSize(right.nome, maxLegW)
+
+        const leftCaptionY  = photoY + leftFit.h  + 6
+        const rightCaptionY = photoY + rightFit.h + 6
+
+        doc.text(leftCaption[0],  leftX  + leftFit.w  / 2, leftCaptionY,  { align: "center" })
+        doc.text(rightCaption[0], rightX + rightFit.w / 2, rightCaptionY, { align: "center" })
+      }
+    }
   }
 
+  // ── Anexos PDF ──
   if (pdfsAnexos.length > 0) {
-    if (y > H - 40) { doc.addPage(); drawHeader("Anexos PDF"); y = 26; }
+    doc.addPage()
+    drawHeader("Anexos PDF")
+    y = 26
     y = sectionBar(y, "Documentos PDF Anexados")
     doc.setFontSize(8); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.muted)

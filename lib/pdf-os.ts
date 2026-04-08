@@ -918,11 +918,11 @@ export async function generateOSPDF(data: OSReportData) {
 
   doc.setFontSize(8); doc.setFont("helvetica", "bold")
   doc.setTextColor(...C.charcoal)
-  doc.text("Assinatura e Identificações", MARGIN + 4, y + 8)
+  doc.text("Identificações", MARGIN + 4, y + 8)
 
   doc.setFontSize(7.3); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.dark)
-  doc.text(`Fiscal: ${FISCAL_FIXO_CARGO} ${FISCAL_FIXO_NOME}`, MARGIN + 4, y + 15)
+  doc.text(`Fiscal: ${FISCAL_FIXO_NOME}`, MARGIN + 4, y + 15)
   doc.text(`Técnico Executante: ${data.abertoPor?.nome ?? "Não informado"}`, MARGIN + 4, y + 21)
   doc.text(`Responsável Técnico: ${data.responsavel?.nome ?? "Não informado"}`, MARGIN + 4, y + 27)
 

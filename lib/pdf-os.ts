@@ -405,7 +405,7 @@ export async function generateOSPDF(data: OSReportData) {
   const MARGIN = 13
 
   const [radiusLogoResult, creativaLogoResult, aiSummary] = await Promise.all([
-    loadSvgAsPng("/logo-radius.svg"),
+    loadSvgAsPng("/logo.png"),
     loadSvgAsPng("/logo-criativa.svg"),
     generateConsolidatedSummary(data),
   ])

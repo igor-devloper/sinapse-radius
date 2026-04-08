@@ -11,6 +11,7 @@ function normalizeContainerId(value?: string | null) {
     .toUpperCase()
     .replace(/\s+/g, "")
     .replace(/_/g, "-")
+    .replace(/[^A-Z0-9-]/g, "")
     .split("-")
     .map((segment) => (/^\d+$/.test(segment) ? String(Number(segment)) : segment))
     .join("-");
@@ -64,7 +65,7 @@ export async function GET(
       select: { id: true, containerId: true },
     });
 
-    const eligibleMinerIds = os.containerId
+    let eligibleMinerIds = os.containerId
       ? miners
           .filter(
             (m: { containerId: string | null }) =>
@@ -72,6 +73,19 @@ export async function GET(
           )
           .map((m: { id: string }) => m.id)
       : miners.map((m: { id: string }) => m.id);
+
+    // Fallback de segurança: se não achou por container, usa todos os ASIC ativos
+    // para não deixar OS aberta sem bloco de verificação preenchível.
+    if (eligibleMinerIds.length === 0 && os.containerId) {
+      const allAsicMiners = await db.minerInstance.findMany({
+        where: {
+          status: "ativo",
+          asset: { isAsicModel: true },
+        },
+        select: { id: true },
+      });
+      eligibleMinerIds = allAsicMiners.map((m: { id: string }) => m.id);
+    }
 
     if (eligibleMinerIds.length > 0) {
       await db.minerCheckOS.createMany({

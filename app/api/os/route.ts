@@ -74,6 +74,7 @@ async function buscarMinerInstancesParaOS(containerId?: string): Promise<string[
         .toUpperCase()
         .replace(/\s+/g, "")
         .replace(/_/g, "-")
+        .replace(/[^A-Z0-9-]/g, "")
         .split("-")
         .map((segment) => (/^\d+$/.test(segment) ? String(Number(segment)) : segment))
         .join("-");
@@ -89,9 +90,11 @@ async function buscarMinerInstancesParaOS(containerId?: string): Promise<string[
         orderBy: [{ containerId: "asc" }, { serialNumber: "asc" }],
       });
 
-      return miners
+      const byContainer = miners
         .filter((m: { containerId: string | null }) => normalizeContainerId(m.containerId) === target)
         .map((m: { id: string }) => m.id);
+
+      if (byContainer.length > 0) return byContainer;
     }
 
     const miners = await db.minerInstance.findMany({

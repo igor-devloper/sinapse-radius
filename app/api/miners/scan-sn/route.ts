@@ -26,39 +26,30 @@ function extractSNFromText(rawText: string) {
 
   const compact = text.replace(/\s+/g, " ");
 
-  const patterns = [
-    /M\s*SN[:\s-]*([A-Z0-9]{10,30})/i,
-    /\bSN[:\s-]*([A-Z0-9]{10,30})\b/i,
-    /\b([A-Z0-9]{14,24})\b/g,
-  ];
+  const explicit1 = compact.match(/M\s*SN[:\s-]*([A-Z0-9]{10,30})/i);
+  if (explicit1?.[1]) {
+    const sn = normalizeSN(explicit1[1]);
+    if (isValidMinerSN(sn)) return sn;
+  }
 
-  for (const pattern of patterns) {
-    if (String(pattern).includes("/g")) {
-      const matches = compact.match(pattern);
-      if (!matches?.length) continue;
+  const explicit2 = compact.match(/\bSN[:\s-]*([A-Z0-9]{10,30})\b/i);
+  if (explicit2?.[1]) {
+    const sn = normalizeSN(explicit2[1]);
+    if (isValidMinerSN(sn)) return sn;
+  }
 
-      for (const item of matches) {
-        const normalized = normalizeSN(item);
-        if (isValidMinerSN(normalized)) {
-          return normalized;
-        }
-      }
-      continue;
-    }
-
-    const match = compact.match(pattern);
-    if (match?.[1]) {
-      const normalized = normalizeSN(match[1]);
-      if (isValidMinerSN(normalized)) {
-        return normalized;
-      }
-    }
+  const tokens = compact.match(/[A-Z0-9]{12,30}/g) ?? [];
+  for (const token of tokens) {
+    const sn = normalizeSN(token);
+    if (isValidMinerSN(sn)) return sn;
   }
 
   return null;
 }
 
 export async function POST(req: NextRequest) {
+  let worker: any = null;
+
   try {
     const body = await req.json();
     const imageBase64 = body?.imageBase64;
@@ -78,46 +69,62 @@ export async function POST(req: NextRequest) {
 
     const { createWorker } = await import("tesseract.js");
 
-    const worker = await createWorker("eng");
+    worker = await createWorker("eng", 1, {
+      logger: () => {},
+      // Workaround para Next.js
+      workerPath:
+        "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js",
+      corePath:
+        "https://cdn.jsdelivr.net/npm/tesseract.js-core@5",
+      langPath:
+        "https://tessdata.projectnaptha.com/4.0.0",
+    });
 
-    try {
-      await worker.setParameters({
-        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:- ",
-        preserve_interword_spaces: "1",
-      });
+    await worker.setParameters({
+      tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789:- ",
+      preserve_interword_spaces: "1",
+    });
 
-      const result = await worker.recognize(imageBuffer);
-      const rawText = result?.data?.text ?? "";
+    const result = await worker.recognize(imageBuffer);
+    const rawText = result?.data?.text ?? "";
 
-      const sn = extractSNFromText(rawText);
+    const sn = extractSNFromText(rawText);
 
-      if (sn) {
-        return NextResponse.json({
-          ok: true,
-          sn,
-          rawText,
-          method: "ocr",
-        });
-      }
-
+    if (sn) {
       return NextResponse.json({
-        ok: false,
-        sn: null,
+        ok: true,
+        sn,
         rawText,
-        error: "SN não identificado no OCR.",
+        method: "ocr",
       });
-    } finally {
-      await worker.terminate();
     }
+
+    return NextResponse.json({
+      ok: false,
+      sn: null,
+      rawText,
+      error: "SN não identificado no OCR.",
+    });
   } catch (error) {
     console.error("Erro em /api/miners/scan-sn:", error);
 
     return NextResponse.json(
       {
         ok: false,
-        error: "Erro interno ao processar OCR.",
+        error:
+          error instanceof Error
+            ? error.message
+            : "Erro interno ao processar OCR.",
       },
       { status: 500 }
     );
+  } finally {
+    if (worker) {
+      try {
+        await worker.terminate();
+      } catch {
+        // ignora erro no terminate
+      }
+    }
   }
 }

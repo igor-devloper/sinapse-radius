@@ -30,6 +30,55 @@ function parseSupabaseHttpSrc(src: string): { bucket: string; path: string } | n
   }
 }
 
+async function downloadFromSupabase(bucket: string, path: string): Promise<{ buf: Buffer; contentType: string } | null> {
+  const safeDecode = (value: string) => {
+    try {
+      return decodeURIComponent(value);
+    } catch {
+      return value;
+    }
+  };
+
+  const pathCandidates = Array.from(
+    new Set([
+      path,
+      path.replace(/^\/+/, ""),
+      safeDecode(path),
+      safeDecode(path).replace(/^\/+/, ""),
+    ])
+  ).filter(Boolean);
+
+  for (const candidate of pathCandidates) {
+    const { data, error } = await supabaseAdmin.storage.from(bucket).download(candidate);
+    if (!error && data) {
+      const buf = Buffer.from(await data.arrayBuffer());
+      const ext = candidate.split(".").pop()?.toLowerCase();
+      const mimes: Record<string, string> = {
+        pdf: "application/pdf",
+        jpg: "image/jpeg",
+        jpeg: "image/jpeg",
+        png: "image/png",
+        webp: "image/webp",
+        gif: "image/gif",
+      };
+      return { buf, contentType: mimes[ext ?? ""] ?? "application/octet-stream" };
+    }
+  }
+
+  // Fallback por URL pública (quando download do SDK falha por parsing/path legacy)
+  const publicUrl = supabaseAdmin.storage.from(bucket).getPublicUrl(path.replace(/^\/+/, "")).data.publicUrl;
+  if (publicUrl) {
+    const res = await fetch(publicUrl, { cache: "no-store" });
+    if (res.ok) {
+      const ab = await res.arrayBuffer();
+      const ct = res.headers.get("content-type") || "application/octet-stream";
+      return { buf: Buffer.from(ab), contentType: ct };
+    }
+  }
+
+  return null;
+}
+
 export async function GET(req: Request) {
   try {
     const { userId } = await auth();
@@ -50,26 +99,15 @@ export async function GET(req: Request) {
       : parseSupabaseHttpSrc(src);
 
     if (parsed) {
-      const { data, error } = await supabaseAdmin.storage
-        .from(parsed.bucket)
-        .download(parsed.path);
-
-      if (error || !data) {
-        return Response.json({ error: `download falhou: ${error?.message}` }, { status: 500 });
+      const downloaded = await downloadFromSupabase(parsed.bucket, parsed.path);
+      if (!downloaded) {
+        return Response.json(
+          { error: `download falhou para bucket="${parsed.bucket}" path="${parsed.path}"` },
+          { status: 500 }
+        );
       }
-
-      buf = Buffer.from(await data.arrayBuffer());
-
-      const ext = parsed.path.split(".").pop()?.toLowerCase();
-      const mimes: Record<string, string> = {
-        pdf: "application/pdf",
-        jpg: "image/jpeg",
-        jpeg: "image/jpeg",
-        png: "image/png",
-        webp: "image/webp",
-        gif: "image/gif",
-      };
-      contentType = mimes[ext ?? ""] ?? "application/octet-stream";
+      buf = downloaded.buf;
+      contentType = downloaded.contentType;
     } else {
       return Response.json(
         { error: "src inválido. Use supabase://bucket/path ou URL de storage do Supabase." },

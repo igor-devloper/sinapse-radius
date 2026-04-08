@@ -1,7 +1,6 @@
 "use client"
 
 import jsPDF from "jspdf"
-import autoTable from "jspdf-autotable"
 
 // ─────────────────────────────────────────────
 // PALETA CORPORATIVA — Radius / AXIA
@@ -67,7 +66,7 @@ export type OSReportData = {
     periodicidade: string
     subsistema: string
     referencia: string
-    status: "PENDENTE" | "OK" | "NAO_APLICAVEL" | "REQUER_ATENCAO"
+    status: "PENDENTE" | "CONFORME" | "NAO_APLICAVEL" | "NAO_CONFORME" | "CONFORME_COM_RESSALVAS"
     observacao?: string | null
     atualizadoEm?: string | null
     assetNome?: string | null
@@ -110,71 +109,46 @@ function fmtMonthYear(iso: string | null | undefined) {
   if (isNaN(d.getTime())) return "—"
   return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).toUpperCase()
 }
-function statusLabel(s: string) {
-  const m: Record<string, string> = {
-    ABERTA: "Aberta", EM_ANDAMENTO: "Em andamento",
-    AGUARDANDO_PECA: "Aguardando peça", PAUSADA: "Pausada",
-    CONCLUIDA: "Concluída", CANCELADA: "Cancelada",
-  }
-  return m[s] ?? s
-}
-function prioridadeLabel(p: string) {
-  return ({ CRITICA: "Crítica", ALTA: "Alta", MEDIA: "Média", BAIXA: "Baixa" })[p] ?? p
-}
 function checklistStatusLabel(s: string) {
-  return ({ PENDENTE: "Pendente", OK: "OK", NAO_APLICAVEL: "N/A", REQUER_ATENCAO: "Atenção" })[s] ?? s
+  return ({
+    PENDENTE: "Pendente",
+    CONFORME: "Conforme",
+    NAO_APLICAVEL: "N/A",
+    NAO_CONFORME: "Não conforme",
+    CONFORME_COM_RESSALVAS: "Conforme com ressalvas",
+  })[s] ?? s
 }
 function checklistStatusColor(s: string): Color {
-  if (s === "OK") return C.green
-  if (s === "REQUER_ATENCAO") return C.orange
+  if (s === "CONFORME") return C.green
+  if (s === "CONFORME_COM_RESSALVAS") return C.blue
+  if (s === "NAO_CONFORME") return C.orange
   if (s === "NAO_APLICAVEL") return C.muted
-  return C.red
-}
-function atividadeLabel(a: string) {
-  const m: Record<string, string> = {
-    MANUTENCAO_PREVENTIVA_GERAL: "Manutenção Preventiva Geral",
-    FALHA_ENERGIA: "Falha de energia",
-    FALHA_BOMBA_CIRCULACAO: "Falha bomba circulação",
-    FALHA_VENTILADOR_EXAUSTAO: "Falha ventilador exaustão",
-    FALHA_BOMBA_REPOSICAO: "Falha bomba reposição",
-    ALARME_VAZAMENTO: "Alarme de vazamento",
-    ALARME_ALTA_TEMPERATURA: "Alarme alta temperatura",
-    ALARME_ALTA_PRESSAO: "Alarme alta pressão",
-    ALARME_BAIXA_PRESSAO: "Alarme baixa pressão",
-    ALARME_BAIXA_VAZAO: "Alarme baixa vazão",
-    ALARME_CONDENSACAO: "Alarme de condensação",
-    FALHA_VEDACAO_BOMBA: "Falha vedação bomba",
-    FALHA_VENTILADOR_TORRE: "Falha ventilador torre",
-    SUBSTITUICAO_VALVULA_EXAUSTAO: "Substituição válvula exaustão",
-    SUBSTITUICAO_VENTILADOR_TORRE: "Substituição ventilador torre",
-    OUTRO: "Outro",
-  }
-  return m[a] ?? a
+  return C.muted
 }
 function tipoLabel(a: string) {
   return a === "MANUTENCAO_PREVENTIVA_GERAL" ? "PREVENTIVA" : "CORRETIVA"
 }
 
-function buildTechnicalRecommendations(data: OSReportData): string[] {
-  const recs: string[] = []
-  const atencao = data.checklistItems.filter((i) => i.status === "REQUER_ATENCAO").length
-  const pendentes = data.checklistItems.filter((i) => i.status === "PENDENTE").length
+const FISCAL_FIXO_NOME = "José Bione de Melo Filho";
+const FISCAL_FIXO_CARGO = "Engenheiro da AXIA";
 
-  if (atencao > 0) {
-    recs.push(`Tratar com prioridade os ${atencao} itens classificados como "Requer Atenção".`)
-  }
-  if (pendentes > 0) {
-    recs.push(`Concluir os ${pendentes} itens pendentes na próxima janela de manutenção.`)
-  }
-  if (data.sla?.isCorretiva) {
-    recs.push("Manter acompanhamento diário dos indicadores de SLA até o encerramento definitivo da OS.")
-  }
-  if (data.comentarios.length > 0) {
-    recs.push("Validar as ocorrências registradas em campo e anexar evidências complementares quando aplicável.")
-  }
-  recs.push("Registrar execução, evidências e responsáveis técnicos em padrão único para auditoria e rastreabilidade.")
+function buildIntroducao(data: OSReportData, tipoVisita: string) {
+  const dataConclusao = fmtDate(data.dataConclusao)
+  return [
+    `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
+    `A visita teve foco no subsistema ${data.subsistema}, com verificação dos itens planejados, registro das evidências de campo e consolidação dos resultados no presente relatório.`,
+    `A atividade foi concluída em ${dataConclusao}, conforme o escopo definido para esta ordem de serviço.`,
+  ]
+}
 
-  return recs.slice(0, 5)
+function buildObrigacoesExecutante(data: OSReportData) {
+  const totalChecklist = data.checklistItems.length
+  return [
+    "Executar o checklist preventivo/corretivo aplicável com rastreabilidade por item inspecionado.",
+    "Registrar evidências fotográficas e observações técnicas de forma objetiva e auditável.",
+    "Classificar cada item conforme status operacional (Conforme, Não conforme, Conforme com ressalvas, Pendente ou N/A) de maneira coerente com o campo.",
+    `Consolidar os resultados da visita, incluindo ${totalChecklist} itens avaliados nesta OS, para validação do fiscal responsável.`,
+  ]
 }
 
 // ─────────────────────────────────────────────
@@ -340,14 +314,13 @@ async function normalizeImageOrientation(
 // GERAÇÃO DE TEXTO POR IA
 // ─────────────────────────────────────────────
 async function generateConsolidatedSummary(data: OSReportData): Promise<{
-  resumoExecutivo: string
-  conclusaoTecnica: string
   impactoOperacional: string
 }> {
   const tipoVisita = tipoLabel(data.tipoAtividade)
   const totalChecklist = data.checklistItems.length
-  const okItems = data.checklistItems.filter((i) => i.status === "OK").length
-  const atencaoItems = data.checklistItems.filter((i) => i.status === "REQUER_ATENCAO").length
+  const okItems = data.checklistItems.filter((i) => i.status === "CONFORME").length
+  const atencaoItems = data.checklistItems.filter((i) => i.status === "NAO_CONFORME").length
+  const ressalvaItems = data.checklistItems.filter((i) => i.status === "CONFORME_COM_RESSALVAS").length
   const pendItems = data.checklistItems.filter((i) => i.status === "PENDENTE").length
   const ocorrencias = data.comentarios.length
 
@@ -369,10 +342,11 @@ Motivo / causa raiz: ${data.motivoOS}
 
 === CHECKLIST ===
 Total de itens inspecionados: ${totalChecklist}
-Itens OK: ${okItems}
-Itens com atenção: ${atencaoItems}
+Itens conformes: ${okItems}
+Itens com ressalvas: ${ressalvaItems}
+Itens não conformes: ${atencaoItems}
 Itens pendentes: ${pendItems}
-Percentual de conformidade: ${totalChecklist > 0 ? Math.round((okItems / totalChecklist) * 100) : 0}%
+Percentual de conformidade: ${totalChecklist > 0 ? Math.round(((okItems + ressalvaItems) / totalChecklist) * 100) : 0}%
 
 === OCORRÊNCIAS ===
 Total de ocorrências registradas: ${ocorrencias}
@@ -393,8 +367,6 @@ Quando houver risco, pendência ou desvio, descreva impacto operacional e ação
 
 Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
 {
-  "resumoExecutivo": "3 a 5 parágrafos resumindo a visita, condições do sistema, atividades, resultados e status final",
-  "conclusaoTecnica": "2 a 3 parágrafos com análise técnica, estado atual do sistema, recomendações e próximos passos",
   "impactoOperacional": "1 a 2 parágrafos descrevendo o impacto da manutenção na operação, tempo de indisponibilidade se houver, e resultado esperado com as ações executadas"
 }`
 
@@ -416,10 +388,6 @@ Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
     return JSON.parse(clean)
   } catch {
     return {
-      resumoExecutivo:
-        `A equipe técnica da Radius Mining realizou visita técnica de ${tipoVisita.toLowerCase()} no container de mineração ${data.containerId ?? ""} localizado em Casa Nova – BA, conforme programação de O&M acordada com a AXIA.\n\nDurante a visita foram inspecionados ${totalChecklist} itens do subsistema ${data.subsistema}, com ${okItems} itens em conformidade (${totalChecklist > 0 ? Math.round((okItems / totalChecklist) * 100) : 0}% de conformidade). ${atencaoItems > 0 ? `Foram identificados ${atencaoItems} itens que requerem atenção e estão devidamente registrados neste relatório.` : "Todos os itens avaliados apresentaram conformidade satisfatória."}\n\nAs atividades descritas neste relatório foram concluídas em ${fmtDate(data.dataConclusao)}, com registro fotográfico e de checklist completo disponibilizados ao cliente.`,
-      conclusaoTecnica:
-        `Com base nas atividades realizadas durante esta visita técnica, o container de mineração encontra-se em condições operacionais ${atencaoItems > 0 ? "com pontos de atenção a serem monitorados" : "satisfatórias"}, tendo sido executadas todas as manutenções previstas na programação.\n\nRecomenda-se o monitoramento contínuo dos parâmetros operacionais e o acompanhamento dos itens identificados como "Requer Atenção" na próxima visita técnica programada. A equipe da Radius Mining permanece à disposição da AXIA para esclarecimentos adicionais.`,
       impactoOperacional:
         `A manutenção executada contribui diretamente para a continuidade operacional e eficiência do container de mineração, reduzindo o risco de falhas não programadas e preservando a disponibilidade do sistema. As ações corretivas e preventivas realizadas garantem conformidade com os padrões técnicos estabelecidos contratualmente.`,
     }
@@ -435,7 +403,7 @@ export async function generateOSPDF(data: OSReportData) {
   const H = doc.internal.pageSize.height
   const MARGIN = 13
 
-  const [radiusLogoResult, creativaLogoResult, aiTexts] = await Promise.all([
+  const [radiusLogoResult, creativaLogoResult, aiSummary] = await Promise.all([
     loadSvgAsPng("/logo-radius.svg"),
     loadSvgAsPng("/logo-criativa.svg"),
     generateConsolidatedSummary(data),
@@ -455,6 +423,7 @@ export async function generateOSPDF(data: OSReportData) {
   // ══════════════════════════════════════════
 
   function drawHeader(pageTitle: string) {
+    void pageTitle
     doc.setFillColor(...C.white)
     doc.rect(0, 0, W, 20, "F")
     doc.setFillColor(...C.orange)
@@ -472,9 +441,6 @@ export async function generateOSPDF(data: OSReportData) {
       doc.text("RADIUS MINING", MARGIN, 13)
     }
 
-    doc.setFontSize(8); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.charcoal)
-    doc.text(pageTitle.toUpperCase(), W - MARGIN, 10, { align: "right" })
     doc.setFontSize(7); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.muted)
     doc.text(data.numero, W - MARGIN, 16, { align: "right" })
@@ -520,34 +486,6 @@ export async function generateOSPDF(data: OSReportData) {
     return y + 12
   }
 
-  function pill(x: number, y: number, text: string, bg: Color, tc: Color = C.white) {
-    const pad = 2.5
-    const tw = doc.getTextWidth(text)
-    doc.setFillColor(...bg)
-    doc.roundedRect(x, y - 3.5, tw + pad * 2, 5, 1, 1, "F")
-    doc.setTextColor(...tc)
-    doc.setFontSize(7); doc.setFont("helvetica", "bold")
-    doc.text(text, x + pad, y)
-  }
-
-  function infoCard(x: number, y: number, w: number, label: string, value: string, accentColor: Color = C.charcoal) {
-    doc.setFillColor(...C.surface)
-    doc.roundedRect(x, y, w, 14, 1.5, 1.5, "F")
-    doc.setDrawColor(...C.border)
-    doc.setLineWidth(0.3)
-    doc.roundedRect(x, y, w, 14, 1.5, 1.5, "S")
-    doc.setFillColor(...accentColor)
-    doc.roundedRect(x, y, w, 1.2, 1.5, 1.5, "F")
-    doc.rect(x, y + 1.2, w, 0, "F")
-    doc.setFontSize(6); doc.setFont("helvetica", "normal")
-    doc.setTextColor(...C.muted)
-    doc.text(label.toUpperCase(), x + 3, y + 6)
-    doc.setFontSize(8.5); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.charcoal)
-    const lines = doc.splitTextToSize(value, w - 6)
-    doc.text(lines[0] ?? "—", x + 3, y + 11)
-  }
-
   // ══════════════════════════════════════════
   // CAPA
   // ══════════════════════════════════════════
@@ -557,93 +495,44 @@ export async function generateOSPDF(data: OSReportData) {
   doc.setFillColor(...C.orange)
   doc.rect(0, 0, W, 3, "F")
 
-  const logoY = 28
-  if (radiusPng) {
+  doc.setFillColor(244, 244, 245)
+  doc.rect(0, 3, W, H - 3, "F")
+
+  const logoY = 52
+  if (criativaPng) {
+    const lH = 30
+    const lW = lH * criativaAspect
+    doc.addImage(criativaPng, "PNG", (W - lW) / 2, logoY, lW, lH, undefined, "FAST")
+  } else if (radiusPng) {
     const lH = 22
     const lW = lH * radiusAspect
-    doc.addImage(radiusPng, "PNG", (W - lW) / 2, logoY, lW, lH, undefined, "FAST")
-  } else {
-    doc.setFontSize(20); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.charcoal)
-    doc.text("RADIUS MINING", W / 2, logoY + 16, { align: "center" })
+    doc.addImage(radiusPng, "PNG", (W - lW) / 2, logoY + 4, lW, lH, undefined, "FAST")
   }
 
-  doc.setDrawColor(...C.border)
-  doc.setLineWidth(0.5)
-  doc.line(MARGIN + 20, logoY + 28, W - MARGIN - 20, logoY + 28)
+  const capaTituloY = logoY + 48
+  doc.setFontSize(17); doc.setFont("helvetica", "bold")
+  doc.setTextColor(...C.orange)
+  const tituloCapa = doc.splitTextToSize(`RELATÓRIO DE MANUTENÇÃO ${tipoVisita}`, W - 46)
+  doc.text(tituloCapa, W / 2, capaTituloY, { align: "center" })
 
-  const tY = logoY + 42
-  doc.setFontSize(15); doc.setFont("helvetica", "bold")
+  doc.setFontSize(12); doc.setFont("helvetica", "bold")
   doc.setTextColor(...C.charcoal)
-  const tituloLines = doc.splitTextToSize(
-    "RELATÓRIO DE O&M DO CONTAINER DE MINERAÇÃO DO P&D CASA NOVA",
-    W - 40
-  )
-  doc.text(tituloLines, W / 2, tY, { align: "center" })
-
-  const lineY = tY + tituloLines.length * 7.5 + 5
-  doc.setFillColor(...C.orange)
-  doc.rect(W / 2 - 22, lineY, 44, 0.7, "F")
-
-  doc.setFontSize(10); doc.setFont("helvetica", "normal")
-  doc.setTextColor(...C.slate)
-  doc.text("Competência: " + competencia, W / 2, lineY + 9, { align: "center" })
-
-  const cardY = lineY + 18
-  const cardW3 = (W - MARGIN * 2 - 9) / 3
-
-  function coverCard(x: number, y: number, w: number, label: string, value: string) {
-    doc.setFillColor(...C.surface)
-    doc.roundedRect(x, y, w, 14, 1.5, 1.5, "F")
-    doc.setDrawColor(...C.border)
-    doc.setLineWidth(0.3)
-    doc.roundedRect(x, y, w, 14, 1.5, 1.5, "S")
-    doc.setFontSize(6); doc.setFont("helvetica", "normal")
-    doc.setTextColor(...C.muted)
-    doc.text(label.toUpperCase(), x + 3, y + 5.5)
-    doc.setFontSize(8.5); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.charcoal)
-    const lines = doc.splitTextToSize(value, w - 6)
-    doc.text(lines[0] ?? "—", x + 3, y + 11)
-  }
-
-  coverCard(MARGIN,                      cardY, cardW3, "Cliente",   "AXIA")
-  coverCard(MARGIN + cardW3 + 4.5,       cardY, cardW3, "Operação",  "Radius Mining")
-  coverCard(MARGIN + (cardW3 + 4.5) * 2, cardY, cardW3, "Local",    "Casa Nova – BA")
-
-  const card2Y = cardY + 19
-  const cardW2 = (W - MARGIN * 2 - 6) / 2
-  coverCard(MARGIN,              card2Y, cardW2, "Tipo de Manutenção", tipoVisita)
-  coverCard(MARGIN + cardW2 + 6, card2Y, cardW2, "Número da OS",       data.numero)
+  doc.text(competencia, W / 2, capaTituloY + tituloCapa.length * 7 + 8, { align: "center" })
 
   doc.setFontSize(8); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.slate)
-  const osTitleLines = doc.splitTextToSize(data.titulo, W - MARGIN * 2)
-  doc.text(osTitleLines.slice(0, 2), W / 2, card2Y + 33, { align: "center" })
+  doc.text(`OS ${data.numero}`, W / 2, capaTituloY + tituloCapa.length * 7 + 16, { align: "center" })
 
-  const statusColors: Record<string, Color> = {
-    CONCLUIDA: C.green, EM_ANDAMENTO: C.blue, ABERTA: C.orange,
-    AGUARDANDO_PECA: C.amber, PAUSADA: C.muted, CANCELADA: C.red,
-  }
-  const prioColors: Record<string, Color> = {
-    CRITICA: C.red, ALTA: C.orange, MEDIA: C.amber, BAIXA: C.green,
-  }
-  const pillY = card2Y + 42
-  const labelStatus = statusLabel(data.status)
-  const labelPrio   = prioridadeLabel(data.prioridade)
-  const sw1 = doc.getTextWidth(labelStatus) + 5
-  const sw2 = doc.getTextWidth(labelPrio)   + 5
-  const totalPillW = sw1 + sw2 + 6
-  pill((W - totalPillW) / 2,            pillY, labelStatus, statusColors[data.status] ?? C.muted)
-  pill((W - totalPillW) / 2 + sw1 + 6, pillY, labelPrio,   prioColors[data.prioridade] ?? C.muted)
+  doc.setDrawColor(...C.border)
+  doc.setLineWidth(0.4)
+  doc.line(MARGIN + 30, capaTituloY + tituloCapa.length * 7 + 24, W - MARGIN - 30, capaTituloY + tituloCapa.length * 7 + 24)
 
-  if (data.responsavel) {
-    doc.setFontSize(8); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.charcoal)
-    doc.text(data.responsavel.nome, W / 2, pillY + 13, { align: "center" })
-    doc.setFont("helvetica", "normal"); doc.setTextColor(...C.muted)
-    doc.text(data.responsavel.cargo.toLowerCase(), W / 2, pillY + 19, { align: "center" })
-  }
+  doc.setFontSize(8); doc.setFont("helvetica", "normal")
+  doc.setTextColor(...C.slate)
+  doc.text("Responsável Técnico", W / 2, capaTituloY + tituloCapa.length * 7 + 34, { align: "center" })
+  doc.setFontSize(10); doc.setFont("helvetica", "bold")
+  doc.setTextColor(...C.charcoal)
+  doc.text(data.responsavel?.nome ?? "Não informado", W / 2, capaTituloY + tituloCapa.length * 7 + 41, { align: "center" })
 
   doc.setDrawColor(...C.border)
   doc.setLineWidth(0.4)
@@ -673,92 +562,62 @@ export async function generateOSPDF(data: OSReportData) {
   doc.text("DOCUMENTO CONFIDENCIAL – USO RESTRITO AXIA", W / 2, H - 2.5, { align: "center" })
 
   // ══════════════════════════════════════════
-  // PÁGINA 1 — VISÃO GERAL DA VISITA
+  // PÁGINA 1 — INTRODUÇÃO + OBRIGAÇÕES
   // ══════════════════════════════════════════
   doc.addPage()
-  drawHeader("Visão Geral da Visita")
+  drawHeader("Introdução da Visita")
   let y = 26
 
-  y = sectionBar(y, "1. Visão Geral da Visita")
+  y = sectionBar(y, "1. Introdução")
 
-  const colW = (W - MARGIN * 2 - 6) / 2
-  const infoH = 13
-
-  infoCard(MARGIN,            y, colW, "Data da Visita",     fmtDate(data.dataConclusao), C.charcoal)
-  infoCard(MARGIN + colW + 6, y, colW, "Local da Operação",  "Casa Nova – BA", C.charcoal)
-  y += infoH + 3
-
-  infoCard(MARGIN,            y, colW, "Cliente",            "AXIA", C.charcoal)
-  infoCard(MARGIN + colW + 6, y, colW, "Operação",           "Radius Mining", C.charcoal)
-  y += infoH + 3
-
-  infoCard(MARGIN,            y, colW, "Tipo de Manutenção", tipoVisita, C.charcoal)
-  infoCard(MARGIN + colW + 6, y, colW, "Subsistema",         data.subsistema, C.charcoal)
-  y += infoH + 3
-
-  infoCard(MARGIN,            y, colW, "Container / TAG",    data.containerId ?? data.componenteTag ?? "—", C.charcoal)
-  infoCard(MARGIN + colW + 6, y, colW, "Técnico Responsável", data.responsavel?.nome ?? "—", C.charcoal)
-  y += infoH + 6
-
-  y = sectionBar(y, "2. Resumo Executivo")
-
-  const resumoParas = aiTexts.resumoExecutivo.split("\n").filter(Boolean)
-  for (const para of resumoParas) {
-    if (y > H - 30) { doc.addPage(); drawHeader("Resumo Executivo"); y = 28; }
+  for (const para of buildIntroducao(data, tipoVisita)) {
+    if (y > H - 30) { doc.addPage(); drawHeader("Introdução"); y = 28; }
     doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.dark)
     const lines = doc.splitTextToSize(para, W - MARGIN * 2)
     doc.text(lines, MARGIN, y)
-    y += lines.length * 4.5 + 3
+    y += lines.length * 4.5 + 2.5
+  }
+
+  if (y > H - 55) { doc.addPage(); drawHeader("Obrigações do Executante"); y = 26; }
+  y += 3
+  y = sectionBar(y, "2. Obrigações do Executante")
+
+  for (const obrigacao of buildObrigacoesExecutante(data)) {
+    if (y > H - 22) { doc.addPage(); drawHeader("Obrigações do Executante"); y = 26; }
+    doc.setFontSize(8.2); doc.setFont("helvetica", "normal")
+    doc.setTextColor(...C.dark)
+    const lines = doc.splitTextToSize(`• ${obrigacao}`, W - MARGIN * 2 - 2)
+    doc.text(lines, MARGIN + 1, y)
+    y += lines.length * 4.4 + 1.8
   }
 
   // ══════════════════════════════════════════
   // PÁGINA 2 — ATIVIDADES + OCORRÊNCIAS
   // ══════════════════════════════════════════
   doc.addPage()
-  drawHeader("Atividades e Ocorrências")
+  drawHeader("Atividades Realizadas")
   y = 26
 
   if (data.checklistItems.length > 0) {
-    y = sectionBar(y, "3. Atividades Realizadas")
+    y = sectionBar(y, "4. Atividades Realizadas")
 
     const total    = data.checklistItems.length
-    const ok       = data.checklistItems.filter((i) => i.status === "OK").length
-    const atencao  = data.checklistItems.filter((i) => i.status === "REQUER_ATENCAO").length
+    const ok       = data.checklistItems.filter((i) => i.status === "CONFORME").length
+    const ressalva = data.checklistItems.filter((i) => i.status === "CONFORME_COM_RESSALVAS").length
+    const atencao  = data.checklistItems.filter((i) => i.status === "NAO_CONFORME").length
     const pendente = data.checklistItems.filter((i) => i.status === "PENDENTE").length
-    const pct      = total > 0 ? Math.round((ok / total) * 100) : 0
+    const naoAplicavel = data.checklistItems.filter((i) => i.status === "NAO_APLICAVEL").length
+    const pct      = total > 0 ? Math.round(((ok + ressalva) / total) * 100) : 0
 
-    const mCardW = (W - MARGIN * 2 - 9) / 4
-    ;[
-      { label: "Itens Inspecionados", value: String(total),    color: C.charcoal },
-      { label: "Conformes (OK)",      value: String(ok),       color: C.green },
-      { label: "Requer Atenção",      value: String(atencao),  color: C.orange },
-      { label: "Pendentes",           value: String(pendente), color: C.red },
-    ].forEach((s, i) => {
-      const cx = MARGIN + i * (mCardW + 3)
-      doc.setFillColor(...C.surface)
-      doc.roundedRect(cx, y, mCardW, 16, 1.5, 1.5, "F")
-      doc.setFillColor(...s.color)
-      doc.roundedRect(cx, y, mCardW, 1.5, 1.5, 1.5, "F")
-      doc.rect(cx, y + 1.5, mCardW, 0, "F")
-      doc.setFontSize(13); doc.setFont("helvetica", "bold")
-      doc.setTextColor(...s.color)
-      doc.text(s.value, cx + mCardW / 2, y + 10.5, { align: "center" })
-      doc.setFontSize(6); doc.setFont("helvetica", "normal")
-      doc.setTextColor(...C.muted)
-      doc.text(s.label, cx + mCardW / 2, y + 14.5, { align: "center" })
-    })
-    y += 20
-
-    doc.setFontSize(7.5); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.charcoal)
-    doc.text(`Conformidade Geral: ${pct}%`, MARGIN, y + 3.5)
-    doc.setFillColor(...C.border)
-    doc.roundedRect(MARGIN + 46, y, W - MARGIN * 2 - 46, 4, 1, 1, "F")
-    const barFill = (pct / 100) * (W - MARGIN * 2 - 46)
-    doc.setFillColor(...(pct >= 90 ? C.green : atencao > 0 ? C.orange : C.amber))
-    if (barFill > 0) doc.roundedRect(MARGIN + 46, y, barFill, 4, 1, 1, "F")
-    y += 9
+    doc.setFontSize(7.2); doc.setFont("helvetica", "normal")
+    doc.setTextColor(...C.muted)
+    doc.text(
+      `Conformes: ${ok}  |  Ressalvas: ${ressalva}  |  Não conformes: ${atencao}  |  N/A: ${naoAplicavel}  |  Pendentes: ${pendente}  |  Conformidade: ${pct}%`,
+      MARGIN,
+      y + 3.5
+    )
+    y += 8
 
     const grupos: Record<string, typeof data.checklistItems> = {}
     for (const item of data.checklistItems) { (grupos[item.subsistema] ??= []).push(item) }
@@ -805,7 +664,8 @@ export async function generateOSPDF(data: OSReportData) {
       (fotosPorItem[f.itemId] ??= []).push(f)
     }
 
-    for (const [sub, items] of Object.entries(grupos)) {
+    const gruposEntries = Object.entries(grupos)
+    for (const [subIndex, [sub, items]] of gruposEntries.entries()) {
       if (y > H - 45) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
 
       doc.setFillColor(...C.surface)
@@ -814,10 +674,10 @@ export async function generateOSPDF(data: OSReportData) {
       doc.rect(MARGIN, y, 2, 6, "F")
       doc.setFontSize(7.5); doc.setFont("helvetica", "bold")
       doc.setTextColor(...C.charcoal)
-      doc.text(sub.toUpperCase(), MARGIN + 5, y + 4.2)
-      const subOK = items.filter((i) => i.status === "OK").length
+      doc.text(`4.${subIndex + 1} ${sub.toUpperCase()}`, MARGIN + 5, y + 4.2)
+      const subOK = items.filter((i) => i.status === "CONFORME").length
       doc.setTextColor(...C.muted)
-      doc.text(`${subOK}/${items.length} OK`, W - MARGIN - 3, y + 4.2, { align: "right" })
+      doc.text(`${subOK}/${items.length} Conformes`, W - MARGIN - 3, y + 4.2, { align: "right" })
       y += 7
 
       // Renderiza cada item individualmente com suas fotos logo abaixo
@@ -830,9 +690,11 @@ export async function generateOSPDF(data: OSReportData) {
         if (y > H - 30) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
 
         // Fundo zebrado por item
-        const itemBgColor: Color = item.status === "OK"
+        const itemBgColor: Color = item.status === "CONFORME"
           ? [240, 253, 244]      // verde claro
-          : item.status === "REQUER_ATENCAO"
+          : item.status === "CONFORME_COM_RESSALVAS"
+          ? [239, 246, 255]      // azul claro
+          : item.status === "NAO_CONFORME"
           ? [255, 247, 237]      // laranja claro
           : C.surface
 
@@ -843,16 +705,11 @@ export async function generateOSPDF(data: OSReportData) {
         doc.setFillColor(...statusClr)
         doc.rect(MARGIN, y, 1.5, 10, "F")
 
-        // ID do item
-        doc.setFontSize(6.5); doc.setFont("helvetica", "bold")
-        doc.setTextColor(...C.muted)
-        doc.text(item.itemId, MARGIN + 4, y + 4.5)
-
         // Descrição
         doc.setFontSize(7.5); doc.setFont("helvetica", "normal")
         doc.setTextColor(...C.dark)
-        const descLines = doc.splitTextToSize(item.descricao, W - MARGIN * 2 - 65)
-        doc.text(descLines[0], MARGIN + 18, y + 4.5)
+        const descLines = doc.splitTextToSize(item.descricao, W - MARGIN * 2 - 50)
+        doc.text(descLines[0], MARGIN + 4, y + 4.5)
 
         // Periodicidade (pill direita)
         doc.setFontSize(6); doc.setFont("helvetica", "normal")
@@ -869,30 +726,27 @@ export async function generateOSPDF(data: OSReportData) {
         // Observação (se houver)
         if (item.observacao) {
           if (y > H - 20) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
-          doc.setFillColor(...itemBgColor)
-          doc.rect(MARGIN, y, W - MARGIN * 2, 8, "F")
-          doc.setFillColor(...C.border)
-          doc.rect(MARGIN, y, 1.5, 8, "F")
-          doc.setFontSize(6); doc.setFont("helvetica", "italic")
-          doc.setTextColor(...C.muted)
-          doc.text("Observação:", MARGIN + 4, y + 3)
-          doc.setFont("helvetica", "normal"); doc.setTextColor(...C.dark)
-          const obsLines = doc.splitTextToSize(item.observacao, W - MARGIN * 2 - 30)
-          doc.text(obsLines[0], MARGIN + 22, y + 3)
-          if (obsLines.length > 1) {
-            y += 4
-            doc.rect(MARGIN, y, W - MARGIN * 2, 6, "F")
-            doc.rect(MARGIN, y, 1.5, 6, "F")
-            doc.text(obsLines[1], MARGIN + 4, y + 4)
-          }
-          y += 9
+          const obsLines = doc.splitTextToSize(item.observacao, W - MARGIN * 2 - 12)
+          const obsH = Math.max(12, 6 + obsLines.length * 3.6)
+          if (y + obsH > H - 18) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
+          doc.setFillColor(255, 250, 235)
+          doc.roundedRect(MARGIN, y, W - MARGIN * 2, obsH, 1, 1, "F")
+          doc.setFillColor(...statusClr)
+          doc.rect(MARGIN, y, 2, obsH, "F")
+          doc.setFontSize(6.5); doc.setFont("helvetica", "bold")
+          doc.setTextColor(...C.charcoal)
+          doc.text("OBSERVAÇÃO DE CAMPO", MARGIN + 4, y + 4.2)
+          doc.setFontSize(7); doc.setFont("helvetica", "normal")
+          doc.setTextColor(...C.dark)
+          doc.text(obsLines, MARGIN + 4, y + 8.2)
+          y += obsH + 2
         }
 
         // ── Fotos do item (2 por linha, portrait; 1 por linha, landscape) ──
         if (itemFotos.length > 0) {
           const FOTO_GAP     = 4
           const CAPTION_H_F  = 6
-          const MAX_FOTO_H   = 55   // altura máx de uma foto no relatório
+          const MAX_FOTO_H   = 70   // altura máx de uma foto no relatório
           const COL_W        = (W - MARGIN * 2 - FOTO_GAP) / 2
 
           let fi = 0
@@ -924,7 +778,7 @@ export async function generateOSPDF(data: OSReportData) {
             } else {
               // Portrait: tenta parear 2 fotos lado a lado
               const fotoA = itemFotos[fi]
-              const fotoB = itemFotos[fi + 1] && !itemFotos[fi + 1].dataUrl
+              const fotoB = itemFotos[fi + 1] && itemFotos[fi + 1].w < itemFotos[fi + 1].h
                 ? itemFotos[fi + 1]
                 : null
 
@@ -982,7 +836,7 @@ export async function generateOSPDF(data: OSReportData) {
 
   if (data.comentarios.length > 0) {
     if (y > H - 50) { doc.addPage(); drawHeader("Ocorrências"); y = 26; }
-    y = sectionBar(y, "4. Ocorrências Identificadas")
+    y = sectionBar(y, "5. Ocorrências Identificadas")
 
     for (const [idx, c] of data.comentarios.entries()) {
       if (y > H - 32) { doc.addPage(); drawHeader("Ocorrências (cont.)"); y = 26; }
@@ -1019,9 +873,9 @@ export async function generateOSPDF(data: OSReportData) {
   drawHeader("Impacto Operacional e Conclusão")
   y = 26
 
-  y = sectionBar(y, "5. Impacto Operacional")
+  y = sectionBar(y, "6. Impacto Operacional")
 
-  const impactoParas = aiTexts.impactoOperacional.split("\n").filter(Boolean)
+  const impactoParas = aiSummary.impactoOperacional.split("\n").filter(Boolean)
   for (const para of impactoParas) {
     if (y > H - 30) { doc.addPage(); drawHeader("Impacto Operacional"); y = 28; }
     doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
@@ -1062,98 +916,41 @@ export async function generateOSPDF(data: OSReportData) {
   }
 
   if (y > H - 50) { doc.addPage(); drawHeader("Conclusão Técnica"); y = 26; }
-  y = sectionBar(y, "6. Conclusão Técnica")
+  y = sectionBar(y, "7. Conclusão Técnica")
 
-  const conclusaoParas = aiTexts.conclusaoTecnica.split("\n").filter(Boolean)
-  for (const para of conclusaoParas) {
-    if (y > H - 30) { doc.addPage(); drawHeader("Conclusão Técnica"); y = 28; }
-    doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
-    doc.setTextColor(...C.dark)
-    const lines = doc.splitTextToSize(para, W - MARGIN * 2)
-    doc.text(lines, MARGIN, y)
-    y += lines.length * 4.5 + 3
-  }
-
-  y += 2
-  const recomendacoes = buildTechnicalRecommendations(data)
-  if (recomendacoes.length > 0) {
-    if (y > H - 55) { doc.addPage(); drawHeader("Recomendações"); y = 26; }
-    y = sectionBar(y, "7. Recomendações e Próximos Passos")
-    for (const rec of recomendacoes) {
-      if (y > H - 20) { doc.addPage(); drawHeader("Recomendações"); y = 26; }
-      doc.setFontSize(8.2); doc.setFont("helvetica", "normal")
-      doc.setTextColor(...C.dark)
-      const lines = doc.splitTextToSize(`• ${rec}`, W - MARGIN * 2 - 2)
-      doc.text(lines, MARGIN + 1, y)
-      y += lines.length * 4.4 + 2
-    }
-  }
-
-  if (data.conclusaoManual?.trim()) {
-    if (y > H - 50) { doc.addPage(); drawHeader("Conclusão do Responsável"); y = 26; }
-    y = sectionBar(y, "8. Conclusão do Responsável")
-    doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
-    doc.setTextColor(...C.dark)
-    const linhasConclusaoManual = doc.splitTextToSize(data.conclusaoManual.trim(), W - MARGIN * 2)
-    doc.text(linhasConclusaoManual, MARGIN, y)
-    y += linhasConclusaoManual.length * 4.5 + 4
-  }
+  const textoConclusaoTecnica = data.conclusaoManual?.trim() || "Conclusão técnica não informada."
+  doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
+  doc.setTextColor(...C.dark)
+  const linhasConclusaoManual = doc.splitTextToSize(textoConclusaoTecnica, W - MARGIN * 2)
+  doc.text(linhasConclusaoManual, MARGIN, y)
+  y += linhasConclusaoManual.length * 4.5 + 4
 
   y += 6
   if (y > H - 40) { doc.addPage(); drawHeader("Assinatura"); y = 26; }
 
   doc.setFillColor(...C.surface)
-  doc.roundedRect(MARGIN, y, W - MARGIN * 2, 26, 2, 2, "F")
+  doc.roundedRect(MARGIN, y, W - MARGIN * 2, 42, 2, 2, "F")
   doc.setDrawColor(...C.border)
   doc.setLineWidth(0.3)
-  doc.roundedRect(MARGIN, y, W - MARGIN * 2, 26, 2, 2, "S")
+  doc.roundedRect(MARGIN, y, W - MARGIN * 2, 42, 2, 2, "S")
   doc.setFillColor(...C.orange)
-  doc.roundedRect(MARGIN, y, 2, 26, 2, 2, "F")
+  doc.roundedRect(MARGIN, y, 2, 42, 2, 2, "F")
 
   doc.setFontSize(8); doc.setFont("helvetica", "bold")
   doc.setTextColor(...C.charcoal)
-  doc.text("Equipe Técnica – Radius Mining", MARGIN + 4, y + 10)
-  doc.setFont("helvetica", "normal"); doc.setTextColor(...C.muted)
-  doc.text("Operação: P&D Casa Nova · Cliente: AXIA", MARGIN + 4, y + 16)
-  doc.setFontSize(7); doc.text(`Relatório emitido em ${geradoEm}`, MARGIN + 4, y + 22)
+  doc.text("Assinatura e Identificações", MARGIN + 4, y + 8)
 
-  if (data.responsavel) {
-    doc.setFontSize(8); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.charcoal)
-    doc.text(data.responsavel.nome, W - MARGIN - 4, y + 10, { align: "right" })
-    doc.setFont("helvetica", "normal"); doc.setTextColor(...C.muted)
-    doc.text(data.responsavel.cargo.toLowerCase(), W - MARGIN - 4, y + 16, { align: "right" })
-  }
-  y += 32
+  doc.setFontSize(7.3); doc.setFont("helvetica", "normal")
+  doc.setTextColor(...C.dark)
+  doc.text(`Fiscal: ${FISCAL_FIXO_CARGO} ${FISCAL_FIXO_NOME}`, MARGIN + 4, y + 15)
+  doc.text(`Técnico Executante: ${data.abertoPor?.nome ?? "Não informado"}`, MARGIN + 4, y + 21)
+  doc.text(`Responsável Técnico: ${data.responsavel?.nome ?? "Não informado"}`, MARGIN + 4, y + 27)
 
-  if (data.historico.length > 0) {
-    if (y > H - 45) { doc.addPage(); drawHeader("Histórico de Status"); y = 26; }
-    y = sectionBar(y, "Histórico de Status da OS")
+  doc.setFontSize(7); doc.setTextColor(...C.muted)
+  doc.text(`Relatório emitido em ${geradoEm}`, MARGIN + 4, y + 35)
+  doc.text("Operação: P&D Casa Nova · Cliente: AXIA", MARGIN + 4, y + 39)
 
-    autoTable(doc, {
-      startY: y,
-      head: [["Data", "Status Anterior", "Status Atual", "Usuário", "Observação"]],
-      body: data.historico.map((h) => [
-        fmt(h.createdAt),
-        h.statusDe ? statusLabel(h.statusDe) : "—",
-        statusLabel(h.statusPara),
-        h.usuario,
-        h.observacao || "—",
-      ]),
-      theme: "striped",
-      headStyles: { fillColor: C.charcoal, textColor: C.white, fontSize: 7, fontStyle: "bold" },
-      alternateRowStyles: { fillColor: C.surface },
-      styles: { fontSize: 7, cellPadding: [1.5, 2] },
-      columnStyles: {
-        0: { cellWidth: 30 },
-        1: { cellWidth: 28 },
-        2: { cellWidth: 28 },
-        3: { cellWidth: 28 },
-      },
-      margin: { left: MARGIN, right: MARGIN },
-    })
-    y = (doc as any).lastAutoTable.finalY + 4
-  }
+  y += 48
 
   // ══════════════════════════════════════════
   // REGISTRO FOTOGRÁFICO — as fotos já aparecem inline junto a cada item
@@ -1168,7 +965,6 @@ export async function generateOSPDF(data: OSReportData) {
   if (imagens.length > 0) {
     const PHOTO_MARGIN_TOP = 26
     const PHOTO_MARGIN_BOT = 18
-    const USABLE_H = H - PHOTO_MARGIN_TOP - PHOTO_MARGIN_BOT
     const USABLE_W = W - MARGIN * 2
     const CAPTION_H = 10
     const GAP = 6

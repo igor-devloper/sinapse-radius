@@ -101,7 +101,15 @@ export async function deleteAnexoOS(path: string) {
 export function parseSupabaseSrc(src: string): { bucket: string; path: string } | null {
   const m = String(src).match(/^supabase:\/\/([^\/]+)\/(.+)$/i);
   if (!m) return null;
-  return { bucket: m[1], path: m[2] };
+  const bucket = m[1];
+  const rawPath = m[2].replace(/^\/+/, "");
+  let path = rawPath;
+  try {
+    path = decodeURIComponent(rawPath);
+  } catch {
+    path = rawPath;
+  }
+  return { bucket, path };
 }
 
 export function isSupabaseSrc(src: string) {

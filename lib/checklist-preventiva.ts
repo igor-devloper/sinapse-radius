@@ -22,7 +22,7 @@ export const CHECKLIST_PREVENTIVA: ChecklistItem[] = [
   { id: "P-013", descricao: "Limpar porta de drenagem no topo da torre seca (folhas e detritos)", periodicidade: "Trimestral", subsistema: "Torre Seca", referencia: "Manual §9.4.3" },
   { id: "P-014", descricao: "Limpar filtro Y do duto de reposição da estação de bombas", periodicidade: "Semestral", subsistema: "Estação de Bombas", referencia: "Manual §9.3.1" },
   { id: "P-015", descricao: "Testar pH do fluido refrigerante (valor entre 7 e 9)", periodicidade: "Semestral", subsistema: "Estação de Bombas", referencia: "Manual §9.3.6" },
-  { id: "P-016", descricao: "Inspecionar e reapertar terminais e parafusos elétricos das conexões", periodicidade: "Mensal", subsistema: "Eletrica", referencia: "Manual §9.3.3" },
+  { id: "P-016", descricao: "Inspecionar e reapertar terminais e bornes das conexões elétricas", periodicidade: "Mensal", subsistema: "Eletrica", referencia: "Manual §9.3.3" },
   { id: "P-017", descricao: "Inspecionar rede de tubulações quanto a vazamentos", periodicidade: "Semestral", subsistema: "Sistema de Manifold", referencia: "Manual §9.3.2" },
   { id: "P-018", descricao: "Rastrear e registrar parâmetros do fluido refrigerante (Tabela 9.1)", periodicidade: "Anual", subsistema: "Estação de Bombas", referencia: "Manual §9.3.6" },
   { id: "P-019", descricao: "Inspeção geral de todos os componentes e sistemas", periodicidade: "Anual", subsistema: "Geral", referencia: "Manual §9.4.6" },

@@ -28,8 +28,7 @@ export const CHECKLIST_PREVENTIVA: ChecklistItem[] = [
   { id: "P-019", descricao: "Inspeção geral de todos os componentes e sistemas", periodicidade: "Anual", subsistema: "Geral", referencia: "Manual §9.4.6" },
   { id: "P-020", descricao: "Drenar e substituir fluido refrigerante do sistema (~1.500 L)", periodicidade: "A cada 1-2 anos", subsistema: "Estação de Bombas", referencia: "Manual §9.3.4" },
   // ── ASICs / Miners ──────────────────────────────────────────────────────────
-  { id: "M-001", descricao: "Verificar status operacional de todos os miners (online/offline/falha)", periodicidade: "Mensal", subsistema: "ASICs / Miners", referencia: "Checklist ASIC Mensal" },
-  { id: "M-002", descricao: "Registrar miners offline e/ou com falha — identificar SN, posição no rack, tipo de falha e container", periodicidade: "Mensal", subsistema: "ASICs / Miners", referencia: "Checklist ASIC Mensal" },
+  { id: "M-001", descricao: "Verificar status operacional de todos os miners (online/offline/falha) — identificar SN, posição no rack, tipo de falha e container", periodicidade: "Mensal", subsistema: "ASICs / Miners", referencia: "Checklist ASIC Mensal" },
 ];
 
 export const CHECKLIST_POR_ID = Object.fromEntries(

@@ -31,8 +31,9 @@ export type ChecklistItemWithAsset = {
   subsistema: string;
   referencia: string;
   assetId: string | null;
-  status: "PENDENTE" | "OK" | "NAO_APLICAVEL" | "REQUER_ATENCAO";
+  status: "PENDENTE" | "CONFORME" | "NAO_APLICAVEL" | "NAO_CONFORME" | "CONFORME_COM_RESSALVAS";
   observacao: string | null;
+  fotos: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number }>;
   atualizadoPorId: string | null;
   atualizadoEm: Date | null;
   createdAt: Date;
@@ -88,6 +89,17 @@ function mapChecklistItem(row: any): ChecklistItemWithAsset {
     assetId: row.assetId ? String(row.assetId) : null,
     status: String(row.status) as ChecklistItemWithAsset["status"],
     observacao: row.observacao ? String(row.observacao) : null,
+    fotos: Array.isArray(row.anexos)
+      ? row.anexos
+          .filter((a: any) => String(a?.tipo ?? "").startsWith("image/"))
+          .map((a: any) => ({
+            id: String(a.id),
+            nome: String(a.nome),
+            url: String(a.url),
+            tipo: String(a.tipo),
+            tamanho: Number(a.tamanho ?? 0),
+          }))
+      : [],
     atualizadoPorId: row.atualizadoPorId ? String(row.atualizadoPorId) : null,
     atualizadoEm: row.atualizadoEm ? toDate(row.atualizadoEm) : null,
     createdAt: toDate(row.createdAt),
@@ -203,6 +215,7 @@ export async function getChecklistItemsWithAssets(osId: string) {
     where: { osId },
     include: {
       asset: { select: { nome: true, codigo: true, fotoUrl: true } },
+      anexos: { orderBy: { createdAt: "asc" } },
     },
     orderBy: [{ subsistema: "asc" }, { itemId: "asc" }],
   });

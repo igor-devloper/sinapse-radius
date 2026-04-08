@@ -22,6 +22,7 @@ const C = {
   yellow:      [202, 138,  4]  as Color,
   blue:        [37,  99, 235]  as Color,
   amber:       [217, 119,  6]  as Color,
+  corporate:   [31, 41, 55]    as Color,
 }
 
 // ─────────────────────────────────────────────
@@ -119,9 +120,9 @@ function checklistStatusLabel(s: string) {
   })[s] ?? s
 }
 function checklistStatusColor(s: string): Color {
-  if (s === "CONFORME") return C.green
-  if (s === "CONFORME_COM_RESSALVAS") return C.blue
-  if (s === "NAO_CONFORME") return C.orange
+  if (s === "CONFORME") return [34, 84, 61]
+  if (s === "CONFORME_COM_RESSALVAS") return [55, 65, 81]
+  if (s === "NAO_CONFORME") return [146, 64, 14]
   if (s === "NAO_APLICAVEL") return C.muted
   return C.muted
 }
@@ -426,8 +427,8 @@ export async function generateOSPDF(data: OSReportData) {
     void pageTitle
     doc.setFillColor(...C.white)
     doc.rect(0, 0, W, 20, "F")
-    doc.setFillColor(...C.orange)
-    doc.rect(0, 0, W, 1.5, "F")
+    doc.setFillColor(...C.border)
+    doc.rect(0, 0, W, 1, "F")
     doc.setFillColor(...C.border)
     doc.rect(0, 20, W, 0.3, "F")
 
@@ -475,14 +476,12 @@ export async function generateOSPDF(data: OSReportData) {
   }
 
   function sectionBar(y: number, title: string): number {
-    doc.setFillColor(...C.orange)
-    doc.rect(MARGIN, y, 2, 7, "F")
-    doc.setFontSize(8.5); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.charcoal)
-    doc.text(title.toUpperCase(), MARGIN + 5, y + 5.2)
+    doc.setFontSize(9); doc.setFont("helvetica", "bold")
+    doc.setTextColor(...C.corporate)
+    doc.text(title.toUpperCase(), MARGIN, y + 5.2)
     doc.setDrawColor(...C.border)
     doc.setLineWidth(0.3)
-    doc.line(MARGIN + 5, y + 7.5, W - MARGIN, y + 7.5)
+    doc.line(MARGIN, y + 7.5, W - MARGIN, y + 7.5)
     return y + 12
   }
 
@@ -492,7 +491,7 @@ export async function generateOSPDF(data: OSReportData) {
   doc.setFillColor(...C.white)
   doc.rect(0, 0, W, H, "F")
 
-  doc.setFillColor(...C.orange)
+  doc.setFillColor(...C.border)
   doc.rect(0, 0, W, 3, "F")
 
   doc.setFillColor(244, 244, 245)
@@ -511,7 +510,7 @@ export async function generateOSPDF(data: OSReportData) {
 
   const capaTituloY = logoY + 48
   doc.setFontSize(17); doc.setFont("helvetica", "bold")
-  doc.setTextColor(...C.orange)
+  doc.setTextColor(...C.corporate)
   const tituloCapa = doc.splitTextToSize(`RELATÓRIO DE MANUTENÇÃO ${tipoVisita}`, W - 46)
   doc.text(tituloCapa, W / 2, capaTituloY, { align: "center" })
 
@@ -555,11 +554,11 @@ export async function generateOSPDF(data: OSReportData) {
   doc.setTextColor(...C.muted)
   doc.text(`Gerado em ${geradoEm}`, W - MARGIN, H - 15.5, { align: "right" })
 
-  doc.setFillColor(...C.orange)
+  doc.setFillColor(...C.border)
   doc.rect(0, H - 6, W, 6, "F")
-  doc.setFontSize(7); doc.setFont("helvetica", "bold")
-  doc.setTextColor(...C.white)
-  doc.text("DOCUMENTO CONFIDENCIAL – USO RESTRITO AXIA", W / 2, H - 2.5, { align: "center" })
+  doc.setFontSize(7); doc.setFont("helvetica", "normal")
+  doc.setTextColor(...C.slate)
+  doc.text("Documento técnico – uso interno", W / 2, H - 2.5, { align: "center" })
 
   // ══════════════════════════════════════════
   // PÁGINA 1 — INTRODUÇÃO + OBRIGAÇÕES
@@ -689,21 +688,9 @@ export async function generateOSPDF(data: OSReportData) {
         // ── Linha de cabeçalho do item ────────────────────────────────
         if (y > H - 30) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
 
-        // Fundo zebrado por item
-        const itemBgColor: Color = item.status === "CONFORME"
-          ? [240, 253, 244]      // verde claro
-          : item.status === "CONFORME_COM_RESSALVAS"
-          ? [239, 246, 255]      // azul claro
-          : item.status === "NAO_CONFORME"
-          ? [255, 247, 237]      // laranja claro
-          : C.surface
-
-        doc.setFillColor(...itemBgColor)
-        doc.rect(MARGIN, y, W - MARGIN * 2, 0.3, "F") // separador sutil
-
-        // Barra lateral colorida por status
-        doc.setFillColor(...statusClr)
-        doc.rect(MARGIN, y, 1.5, 10, "F")
+        // separador sutil entre itens
+        doc.setFillColor(...C.border)
+        doc.rect(MARGIN, y, W - MARGIN * 2, 0.3, "F")
 
         // Descrição
         doc.setFontSize(7.5); doc.setFont("helvetica", "normal")
@@ -729,12 +716,13 @@ export async function generateOSPDF(data: OSReportData) {
           const obsLines = doc.splitTextToSize(item.observacao, W - MARGIN * 2 - 12)
           const obsH = Math.max(12, 6 + obsLines.length * 3.6)
           if (y + obsH > H - 18) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
-          doc.setFillColor(255, 250, 235)
+          doc.setFillColor(...C.surface)
           doc.roundedRect(MARGIN, y, W - MARGIN * 2, obsH, 1, 1, "F")
-          doc.setFillColor(...statusClr)
-          doc.rect(MARGIN, y, 2, obsH, "F")
+          doc.setDrawColor(...C.border)
+          doc.setLineWidth(0.2)
+          doc.roundedRect(MARGIN, y, W - MARGIN * 2, obsH, 1, 1, "S")
           doc.setFontSize(6.5); doc.setFont("helvetica", "bold")
-          doc.setTextColor(...C.charcoal)
+          doc.setTextColor(...C.corporate)
           doc.text("OBSERVAÇÃO DE CAMPO", MARGIN + 4, y + 4.2)
           doc.setFontSize(7); doc.setFont("helvetica", "normal")
           doc.setTextColor(...C.dark)
@@ -890,15 +878,15 @@ export async function generateOSPDF(data: OSReportData) {
     if (y > H - 40) { doc.addPage(); drawHeader("SLA"); y = 26; }
 
     const slaColors: Record<string, Color> = {
-      green: C.green, yellow: C.amber, orange: C.orange, red: C.red,
+      green: [34, 84, 61], yellow: [120, 113, 108], orange: [120, 113, 108], red: [120, 113, 108],
     }
     const slaColor = slaColors[data.sla.statusColor] ?? C.muted
 
     doc.setFillColor(...C.surface)
     doc.roundedRect(MARGIN, y, W - MARGIN * 2, 22, 2, 2, "F")
-    doc.setFillColor(...slaColor)
-    doc.roundedRect(MARGIN, y, W - MARGIN * 2, 2, 2, 2, "F")
-    doc.rect(MARGIN, y + 2, W - MARGIN * 2, 0, "F")
+    doc.setDrawColor(...C.border)
+    doc.setLineWidth(0.2)
+    doc.roundedRect(MARGIN, y, W - MARGIN * 2, 22, 2, 2, "S")
 
     doc.setFontSize(7); doc.setFont("helvetica", "bold")
     doc.setTextColor(...C.muted); doc.text("STATUS SLA", MARGIN + 4, y + 8)
@@ -933,8 +921,6 @@ export async function generateOSPDF(data: OSReportData) {
   doc.setDrawColor(...C.border)
   doc.setLineWidth(0.3)
   doc.roundedRect(MARGIN, y, W - MARGIN * 2, 42, 2, 2, "S")
-  doc.setFillColor(...C.orange)
-  doc.roundedRect(MARGIN, y, 2, 42, 2, 2, "F")
 
   doc.setFontSize(8); doc.setFont("helvetica", "bold")
   doc.setTextColor(...C.charcoal)

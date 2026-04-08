@@ -64,7 +64,10 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
       },
       anexos: { orderBy: { createdAt: "asc" } },
       checklistItems: {
-        include: { asset: { select: { id: true, nome: true, codigo: true, fotoUrl: true } } },
+        include: {
+          asset: { select: { id: true, nome: true, codigo: true, fotoUrl: true } },
+          anexos: { orderBy: { createdAt: "asc" } },
+        },
         orderBy: [{ subsistema: "asc" }, { itemId: "asc" }],
       },
     },
@@ -134,6 +137,14 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
 
     return {
       ...item,
+      fotos: (item.anexos ?? [])
+        .filter((a) => String(a.tipo || "").startsWith("image/"))
+        .map((a) => ({
+          id: String(a.id),
+          nome: String(a.nome),
+          url: String(a.url),
+          tipo: String(a.tipo),
+        })),
       assets: merged.map((a) => ({
         nome: a.assetNome,
         codigo: a.assetCodigo,

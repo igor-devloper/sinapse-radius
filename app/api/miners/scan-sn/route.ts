@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import fs from "node:fs";
+import path from "node:path";
 
 export const runtime = "nodejs";
 
@@ -47,6 +49,38 @@ function extractSNFromText(rawText: string) {
   return null;
 }
 
+function resolveNodeWorkerPath() {
+  const candidateA = path.join(
+    process.cwd(),
+    "node_modules",
+    "tesseract.js",
+    "src",
+    "worker-script",
+    "node",
+    "index.js"
+  );
+
+  const candidateB = path.join(
+    process.cwd(),
+    "node_modules",
+    "tesseract.js",
+    "dist",
+    "worker.min.js"
+  );
+
+  if (fs.existsSync(candidateA)) return candidateA;
+  if (fs.existsSync(candidateB)) return candidateB;
+
+  throw new Error(
+    [
+      "Não encontrei o worker local do tesseract.js.",
+      `Verificado: ${candidateA}`,
+      `Verificado: ${candidateB}`,
+      "Confirme a versão instalada e a estrutura dentro de node_modules/tesseract.js.",
+    ].join(" ")
+  );
+}
+
 export async function POST(req: NextRequest) {
   let worker: any = null;
 
@@ -69,15 +103,13 @@ export async function POST(req: NextRequest) {
 
     const { createWorker } = await import("tesseract.js");
 
+    const workerPath = resolveNodeWorkerPath();
+
     worker = await createWorker("eng", 1, {
       logger: () => {},
-      // Workaround para Next.js
-      workerPath:
-        "https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js",
-      corePath:
-        "https://cdn.jsdelivr.net/npm/tesseract.js-core@5",
-      langPath:
-        "https://tessdata.projectnaptha.com/4.0.0",
+      workerPath,
+      langPath: "https://tessdata.projectnaptha.com/4.0.0",
+      // pode omitir corePath no Node, a menos que queira customizar explicitamente
     });
 
     await worker.setParameters({
@@ -123,7 +155,7 @@ export async function POST(req: NextRequest) {
       try {
         await worker.terminate();
       } catch {
-        // ignora erro no terminate
+        // noop
       }
     }
   }

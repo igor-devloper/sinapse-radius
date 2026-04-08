@@ -154,6 +154,28 @@ function tipoLabel(a: string) {
   return a === "MANUTENCAO_PREVENTIVA_GERAL" ? "PREVENTIVA" : "CORRETIVA"
 }
 
+function buildTechnicalRecommendations(data: OSReportData): string[] {
+  const recs: string[] = []
+  const atencao = data.checklistItems.filter((i) => i.status === "REQUER_ATENCAO").length
+  const pendentes = data.checklistItems.filter((i) => i.status === "PENDENTE").length
+
+  if (atencao > 0) {
+    recs.push(`Tratar com prioridade os ${atencao} itens classificados como "Requer Atenção".`)
+  }
+  if (pendentes > 0) {
+    recs.push(`Concluir os ${pendentes} itens pendentes na próxima janela de manutenção.`)
+  }
+  if (data.sla?.isCorretiva) {
+    recs.push("Manter acompanhamento diário dos indicadores de SLA até o encerramento definitivo da OS.")
+  }
+  if (data.comentarios.length > 0) {
+    recs.push("Validar as ocorrências registradas em campo e anexar evidências complementares quando aplicável.")
+  }
+  recs.push("Registrar execução, evidências e responsáveis técnicos em padrão único para auditoria e rastreabilidade.")
+
+  return recs.slice(0, 5)
+}
+
 // ─────────────────────────────────────────────
 // CARREGAMENTO DE IMAGENS
 // ─────────────────────────────────────────────
@@ -362,6 +384,8 @@ Use linguagem de relatório técnico enviado ao cliente.
 Seja objetivo, preciso e profissional.
 Trate o destinatário como "cliente" ou "AXIA".
 Use "equipe técnica da Radius Mining" como sujeito das ações.
+Não use termos coloquiais, ambíguos ou sem lastro técnico.
+Quando houver risco, pendência ou desvio, descreva impacto operacional e ação recomendada.
 
 Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
 {
@@ -1034,7 +1058,7 @@ export async function generateOSPDF(data: OSReportData) {
   }
 
   if (y > H - 50) { doc.addPage(); drawHeader("Conclusão Técnica"); y = 26; }
-  y = sectionBar(y, "7. Conclusão Técnica")
+  y = sectionBar(y, "6. Conclusão Técnica")
 
   const conclusaoParas = aiTexts.conclusaoTecnica.split("\n").filter(Boolean)
   for (const para of conclusaoParas) {
@@ -1044,6 +1068,21 @@ export async function generateOSPDF(data: OSReportData) {
     const lines = doc.splitTextToSize(para, W - MARGIN * 2)
     doc.text(lines, MARGIN, y)
     y += lines.length * 4.5 + 3
+  }
+
+  y += 2
+  const recomendacoes = buildTechnicalRecommendations(data)
+  if (recomendacoes.length > 0) {
+    if (y > H - 55) { doc.addPage(); drawHeader("Recomendações"); y = 26; }
+    y = sectionBar(y, "7. Recomendações e Próximos Passos")
+    for (const rec of recomendacoes) {
+      if (y > H - 20) { doc.addPage(); drawHeader("Recomendações"); y = 26; }
+      doc.setFontSize(8.2); doc.setFont("helvetica", "normal")
+      doc.setTextColor(...C.dark)
+      const lines = doc.splitTextToSize(`• ${rec}`, W - MARGIN * 2 - 2)
+      doc.text(lines, MARGIN + 1, y)
+      y += lines.length * 4.4 + 2
+    }
   }
 
   y += 6

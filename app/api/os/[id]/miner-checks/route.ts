@@ -57,7 +57,7 @@ export async function GET(
   if (checks.length === 0) {
     const miners = await db.minerInstance.findMany({
       where: {
-        status: "ativo",
+        status: { equals: "ativo", mode: "insensitive" },
         ...(os.containerId
           ? { containerId: { not: null } }
           : { asset: { isAsicModel: true } }),
@@ -79,12 +79,29 @@ export async function GET(
     if (eligibleMinerIds.length === 0 && os.containerId) {
       const allAsicMiners = await db.minerInstance.findMany({
         where: {
-          status: "ativo",
+          status: { equals: "ativo", mode: "insensitive" },
           asset: { isAsicModel: true },
         },
         select: { id: true },
       });
       eligibleMinerIds = allAsicMiners.map((m: { id: string }) => m.id);
+    }
+
+    if (eligibleMinerIds.length === 0) {
+      const allActiveMiners = await db.minerInstance.findMany({
+        where: {
+          status: { equals: "ativo", mode: "insensitive" },
+        },
+        select: { id: true },
+      });
+      eligibleMinerIds = allActiveMiners.map((m: { id: string }) => m.id);
+    }
+
+    if (eligibleMinerIds.length === 0) {
+      const allMiners = await db.minerInstance.findMany({
+        select: { id: true },
+      });
+      eligibleMinerIds = allMiners.map((m: { id: string }) => m.id);
     }
 
     if (eligibleMinerIds.length > 0) {

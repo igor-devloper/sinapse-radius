@@ -78,10 +78,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
   // Isso elimina a dependência da periodicidade "MENSAL" e garante que
   // qualquer OS (preventiva ou corretiva) com miners seja detectada corretamente.
   const minerCheckCount = await db.minerCheckOS.count({ where: { osId: os.id } });
-  const hasMinerItemsInChecklist = os.checklistItems.some((item: { itemId: string }) =>
-    String(item.itemId).startsWith("M-")
-  );
-  const hasMinerChecklist = minerCheckCount > 0 || hasMinerItemsInChecklist;
+  const hasMinerChecklist = minerCheckCount > 0;
 
   // Busca o assetId do modelo ASIC principal para passar ao componente
   // (usado apenas como referência visual — o carregamento real vem dos checks)

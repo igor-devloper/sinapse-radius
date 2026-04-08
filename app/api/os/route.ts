@@ -79,11 +79,30 @@ async function buscarMinerInstancesParaOS(containerId?: string): Promise<string[
         .map((segment) => (/^\d+$/.test(segment) ? String(Number(segment)) : segment))
         .join("-");
 
+    const findAllActiveAsic = async () =>
+      db.minerInstance.findMany({
+        where: {
+          status: { equals: "ativo", mode: "insensitive" },
+          asset: { isAsicModel: true },
+        },
+        select: { id: true },
+        orderBy: [{ containerId: "asc" }, { serialNumber: "asc" }],
+      });
+
+    const findAllActiveMiners = async () =>
+      db.minerInstance.findMany({
+        where: {
+          status: { equals: "ativo", mode: "insensitive" },
+        },
+        select: { id: true },
+        orderBy: [{ containerId: "asc" }, { serialNumber: "asc" }],
+      });
+
     if (containerId) {
       const target = normalizeContainerId(containerId);
       const miners = await db.minerInstance.findMany({
         where: {
-          status: "ativo",
+          status: { equals: "ativo", mode: "insensitive" },
           containerId: { not: null },
         },
         select: { id: true, containerId: true },
@@ -97,16 +116,17 @@ async function buscarMinerInstancesParaOS(containerId?: string): Promise<string[
       if (byContainer.length > 0) return byContainer;
     }
 
-    const miners = await db.minerInstance.findMany({
-      where: {
-        status: "ativo",
-        asset: { isAsicModel: true },
-      },
+    const asicMiners = await findAllActiveAsic();
+    if (asicMiners.length > 0) return asicMiners.map((m: { id: string }) => m.id);
+
+    const allActive = await findAllActiveMiners();
+    if (allActive.length > 0) return allActive.map((m: { id: string }) => m.id);
+
+    const allMiners = await db.minerInstance.findMany({
       select: { id: true },
       orderBy: [{ containerId: "asc" }, { serialNumber: "asc" }],
     });
-
-    return miners.map((m: { id: string }) => m.id);
+    return allMiners.map((m: { id: string }) => m.id);
   } catch {
     return [];
   }

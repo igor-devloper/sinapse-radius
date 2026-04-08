@@ -235,6 +235,43 @@ export async function getAssetBindingsForChecklistItems(itemIds: string[]) {
   return map;
 }
 
+export async function getAllAssetBindingsForChecklistItems(itemIds: string[]) {
+  const uniqueIds = Array.from(new Set(itemIds.filter(Boolean)));
+  const empty = new Map<
+    string,
+    Array<{ assetId: string; assetNome: string | null; assetCodigo: string | null; assetFotoUrl: string | null }>
+  >();
+
+  if (uniqueIds.length === 0) return empty;
+
+  const bindings = await db.assetChecklistTemplate.findMany({
+    where: { checklistItemId: { in: uniqueIds } },
+    include: {
+      asset: { select: { id: true, nome: true, codigo: true, fotoUrl: true } },
+    },
+    orderBy: [{ checklistItemId: "asc" }, { createdAt: "asc" }],
+  });
+
+  for (const row of bindings) {
+    if (!row.asset) continue;
+    const key = String(row.checklistItemId);
+    const list = empty.get(key) ?? [];
+    const next = {
+      assetId: String(row.asset.id),
+      assetNome: row.asset.nome ? String(row.asset.nome) : null,
+      assetCodigo: row.asset.codigo ? String(row.asset.codigo) : null,
+      assetFotoUrl: row.asset.fotoUrl ? String(row.asset.fotoUrl) : null,
+    };
+
+    if (!list.some((a) => a.assetId === next.assetId)) {
+      list.push(next);
+    }
+    empty.set(key, list);
+  }
+
+  return empty;
+}
+
 export async function attachAssetToChecklistItem(args: {
   osId: string;
   itemId: string;

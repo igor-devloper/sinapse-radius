@@ -60,6 +60,7 @@ export type OSReportData = {
   createdAt: string
   responsavel?: { nome: string; cargo: string } | null
   abertoPor: { nome: string }
+  conclusaoManual?: string | null
   checklistItems: Array<{
     itemId: string
     descricao: string
@@ -376,6 +377,9 @@ Percentual de conformidade: ${totalChecklist > 0 ? Math.round((okItems / totalCh
 === OCORRÊNCIAS ===
 Total de ocorrências registradas: ${ocorrencias}
 ${data.comentarios.slice(0, 5).map((c) => `- ${c.texto}`).join("\n")}
+
+=== CONCLUSÃO MANUAL DO RESPONSÁVEL ===
+${data.conclusaoManual?.trim() ? data.conclusaoManual : "Não informada."}
 
 === INSTRUÇÕES DE ESCRITA ===
 Escreva exclusivamente em português técnico formal.
@@ -1083,6 +1087,16 @@ export async function generateOSPDF(data: OSReportData) {
       doc.text(lines, MARGIN + 1, y)
       y += lines.length * 4.4 + 2
     }
+  }
+
+  if (data.conclusaoManual?.trim()) {
+    if (y > H - 50) { doc.addPage(); drawHeader("Conclusão do Responsável"); y = 26; }
+    y = sectionBar(y, "8. Conclusão do Responsável")
+    doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
+    doc.setTextColor(...C.dark)
+    const linhasConclusaoManual = doc.splitTextToSize(data.conclusaoManual.trim(), W - MARGIN * 2)
+    doc.text(linhasConclusaoManual, MARGIN, y)
+    y += linhasConclusaoManual.length * 4.5 + 4
   }
 
   y += 6

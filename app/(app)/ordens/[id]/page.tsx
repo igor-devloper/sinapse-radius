@@ -17,9 +17,12 @@ import { AnexosOS } from "@/components/os/anexos-os";
 import { ChecklistPreventiva } from "@/components/os/checklist-preventiva";
 import { DownloadRelatorioButton } from "@/components/os/download-relatorio-button";
 import { EditarDatasOS } from "@/components/os/editar-datas-os";
+import { ConclusaoRelatorio } from "@/components/os/conclusao-relatorio";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { decodeConclusao, isConclusaoComentario } from "@/lib/os-conclusao";
+import { getAllAssetBindingsForChecklistItems } from "@/lib/assets";
 
 const db = prisma as any;
 
@@ -101,6 +104,11 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
   const canEdit = ["ADMIN", "SUPERVISOR", "TECNICO"].includes(usuario?.cargo ?? "");
   const isPreventiva = os.tipoOS === "PREVENTIVA";
   const isConcluida = os.status === "CONCLUIDA";
+  const conclusaoComentario = [...os.comentarios]
+    .reverse()
+    .find((c) => isConclusaoComentario(c.texto));
+  const conclusaoManual = conclusaoComentario ? decodeConclusao(conclusaoComentario.texto) : "";
+  const comentariosVisiveis = os.comentarios.filter((c) => !isConclusaoComentario(c.texto));
 
   const periodicidades: string[] =
     (os.periodicidadesSelecionadas && os.periodicidadesSelecionadas.length > 0)
@@ -108,6 +116,31 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
       : os.periodicidadePreventiva
         ? [os.periodicidadePreventiva]
         : [];
+
+  const itemIds = Array.from(new Set(os.checklistItems.map((item) => String(item.itemId))));
+  const allAssetBindings = await getAllAssetBindingsForChecklistItems(itemIds);
+  const checklistItemsComTodosAtivos = os.checklistItems.map((item) => {
+    const fromBindings = allAssetBindings.get(String(item.itemId)) ?? [];
+    const merged = [...fromBindings];
+
+    if (item.asset?.id && !merged.some((a) => a.assetId === String(item.asset?.id))) {
+      merged.push({
+        assetId: String(item.asset.id),
+        assetNome: item.asset.nome ?? null,
+        assetCodigo: item.asset.codigo ?? null,
+        assetFotoUrl: item.asset.fotoUrl ?? null,
+      });
+    }
+
+    return {
+      ...item,
+      assets: merged.map((a) => ({
+        nome: a.assetNome,
+        codigo: a.assetCodigo,
+        fotoUrl: a.assetFotoUrl,
+      })),
+    };
+  });
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
@@ -228,7 +261,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
           {isPreventiva ? (
             <ChecklistPreventiva
               osId={os.id}
-              items={os.checklistItems}
+              items={checklistItemsComTodosAtivos}
               canEdit={canEdit && !isConcluida}
               hasMinerChecklist={hasMinerChecklist}
               asicAssetId={asicAssetId}
@@ -275,7 +308,8 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
           )}
 
           <AnexosOS osId={os.id} anexos={os.anexos} canUpload={canEdit && !isConcluida} />
-          <ComentariosOS osId={os.id} comentarios={os.comentarios} />
+          <ConclusaoRelatorio osId={os.id} initialTexto={conclusaoManual} canEdit={canEdit} />
+          <ComentariosOS osId={os.id} comentarios={comentariosVisiveis} />
         </div>
 
         {/* Coluna lateral */}

@@ -2,6 +2,7 @@ import { auth } from "@clerk/nextjs/server";
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { calcularSLA } from "@/lib/sla-manual";
+import { decodeConclusao, isConclusaoComentario } from "@/lib/os-conclusao";
 
 export async function GET(
   _req: NextRequest,
@@ -109,6 +110,10 @@ export async function GET(
     // ── Equipe ─────────────────────────────────────────────────────────
     responsavel: os.responsavel,
     abertoPor:   os.abertoPor,
+    conclusaoManual: (() => {
+      const c = [...os.comentarios].reverse().find((x) => isConclusaoComentario(x.texto));
+      return c ? decodeConclusao(c.texto) : null;
+    })(),
 
     // ── Checklist ──────────────────────────────────────────────────────
     checklistItems: os.checklistItems.map((item) => ({
@@ -139,7 +144,9 @@ export async function GET(
     })),
 
     // ── Comentários ────────────────────────────────────────────────────
-    comentarios: os.comentarios.map((c) => ({
+    comentarios: os.comentarios
+      .filter((c) => !isConclusaoComentario(c.texto))
+      .map((c) => ({
       texto:     c.texto,
       usuario:   c.usuario.nome,
       createdAt: c.createdAt.toISOString(),

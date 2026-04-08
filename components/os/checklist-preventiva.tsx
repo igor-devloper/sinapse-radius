@@ -765,7 +765,7 @@ export function ChecklistPreventiva({
   osId,
   items: inicial,
   canEdit,
-  hasMinerChecklist = false,
+  hasMinerChecklist,
   asicAssetId,
   containerId,
 }: ChecklistPreventivaProps) {

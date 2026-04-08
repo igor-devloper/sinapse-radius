@@ -14,14 +14,14 @@ export default async function NovaOSPage() {
     select: { cargo: true, id: true },
   });
 
-  if (!usuario || !["ADMIN", "SUPERVISOR", "TECNICO"].includes(usuario.cargo)) {
+  if (!usuario || !["ADMIN", "SUPERVISOR", "TECNICO", "ENGENHEIRO"].includes(usuario.cargo)) {
     redirect("/ordens");
   }
 
   const tecnicos = await prisma.usuario.findMany({
     where: {
       ativo: true,
-      cargo: { in: ["TECNICO", "SUPERVISOR", "ADMIN"] },
+      cargo: { in: ["TECNICO", "SUPERVISOR", "ADMIN", "ENGENHEIRO"] },
     },
     select: { id: true, nome: true, cargo: true, avatarUrl: true },
     orderBy: { nome: "asc" },

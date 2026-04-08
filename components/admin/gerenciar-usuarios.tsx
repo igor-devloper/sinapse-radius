@@ -13,7 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Loader2, Mail } from "lucide-react";
 import { toast } from "sonner";
 
-type Cargo = "ADMIN" | "SUPERVISOR" | "TECNICO" | "VISUALIZADOR";
+type Cargo = "ADMIN" | "SUPERVISOR" | "TECNICO" | "VISUALIZADOR" | "ENGENHEIRO";
 
 type Usuario = {
   id: string;
@@ -26,17 +26,19 @@ type Usuario = {
 };
 
 const cargoColor: Record<Cargo, string> = {
-  ADMIN:        "bg-violet-100 text-violet-700",
-  SUPERVISOR:   "bg-blue-100 text-blue-700",
-  TECNICO:      "bg-teal-100 text-teal-700",
+  ADMIN: "bg-violet-100 text-violet-700",
+  SUPERVISOR: "bg-blue-100 text-blue-700",
+  TECNICO: "bg-teal-100 text-teal-700",
   VISUALIZADOR: "bg-gray-100 text-gray-600",
+  ENGENHEIRO: " bg-amber-100   text-amber-600"
 };
 
 const cargoLabel: Record<Cargo, string> = {
-  ADMIN:        "Admin",
-  SUPERVISOR:   "Supervisor",
-  TECNICO:      "Técnico",
+  ADMIN: "Admin",
+  SUPERVISOR: "Supervisor",
+  TECNICO: "Técnico",
   VISUALIZADOR: "Visualizador",
+  ENGENHEIRO: "Engenheiro Eletricista"
 };
 
 async function atualizarUsuario(usuarioId: string, cargo: Cargo, ativo?: boolean) {
@@ -166,6 +168,7 @@ export function GerenciarUsuarios({ usuarios: usuariosInicial }: { usuarios: Usu
                         <SelectItem value="SUPERVISOR">Supervisor</SelectItem>
                         <SelectItem value="TECNICO">Técnico</SelectItem>
                         <SelectItem value="VISUALIZADOR">Visualizador</SelectItem>
+                        <SelectItem value="ENGENHEIRO">Engenheiro Eletricista</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

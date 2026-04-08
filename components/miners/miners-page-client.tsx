@@ -8,6 +8,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+import BarcodeScanner from "./barcode-scanner";
 
 interface AsicAsset { id: string; nome: string; codigo: string; }
 interface MinerRow {
@@ -48,7 +49,7 @@ export default function MinersPageClient({
   const [filterAsset, setFilterAsset] = useState<string>("all");
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
-
+  const [showScanner, setShowScanner] = useState(false);
   // Import state
   const [showImport, setShowImport] = useState(false);
   const [importAssetId, setImportAssetId] = useState(asicAssets[0]?.id ?? "");
@@ -199,6 +200,28 @@ export default function MinersPageClient({
               <label className="text-xs font-medium text-gray-600">Serial Number *</label>
               <Input value={singleSN} onChange={(e) => setSingleSN(e.target.value)} placeholder="Ex: SN001234" className="rounded-xl" />
             </div>
+            <button
+              onClick={() => setShowScanner(true)}
+              className="flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white"
+            >
+              📷 Escanear
+            </button>
+            {showScanner && (
+              <div className="space-y-3">
+                <BarcodeScanner
+                  onScan={(code) => {
+                    setSingleSN(code); // preenche automaticamente
+                    setShowScanner(false);
+                  }}
+                />
+                <button
+                  onClick={() => setShowScanner(false)}
+                  className="text-sm text-gray-500"
+                >
+                  Cancelar
+                </button>
+              </div>
+            )}
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-gray-600">Modelo ASIC *</label>
               <select

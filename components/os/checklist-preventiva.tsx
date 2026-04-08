@@ -4,6 +4,8 @@ import { useState } from "react";
 import {
   CheckCircle2, Circle, AlertTriangle, MinusCircle,
   ChevronDown, ChevronUp, MessageSquare, BookOpen, Package2,
+  Camera, X, Loader2,
+  BookOpenCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { INSTRUCOES_MANUAL } from "@/lib/checklist-preventiva";
@@ -22,7 +24,21 @@ import { MinerChecklist } from "@/components/os/miner-checklist";
 
 // ─── Tipos ────────────────────────────────────────────────────────────────────
 
-type StatusItem = "PENDENTE" | "OK" | "NAO_APLICAVEL" | "REQUER_ATENCAO";
+type StatusItem = "PENDENTE" | "CONFORME" | "NAO_APLICAVEL" | "NAO_CONFORME" | "CONFORME_COM_RESSALVAS";
+
+interface AnexoFoto {
+  id: string;
+  nome: string;
+  url: string;
+  tipo: string;
+}
+
+// Suporte a um único asset legado OU array de assets
+interface AssetInfo {
+  nome?: string | null;
+  codigo?: string | null;
+  fotoUrl?: string | null;
+}
 
 interface ChecklistItem {
   id: string;
@@ -33,28 +49,27 @@ interface ChecklistItem {
   referencia: string;
   status: StatusItem;
   observacao?: string | null;
-  asset?: {
-    nome?: string | null;
-    codigo?: string | null;
-    fotoUrl?: string | null;
-  } | null;
+  fotos?: AnexoFoto[];
+  // Suporte a múltiplos ativos por item
+  assets?: AssetInfo[] | null;
+  // Legado — item com um único ativo
+  asset?: AssetInfo | null;
+}
+
+// ─── Helper: normaliza para sempre retornar um array de assets ───────────────
+
+function getAssets(item: ChecklistItem): AssetInfo[] {
+  if (item.assets && item.assets.length > 0) return item.assets;
+  if (item.asset?.nome) return [item.asset];
+  return [];
 }
 
 // ─── Separação miner × preventiva ────────────────────────────────────────────
 
-/**
- * Identifica se um item pertence ao checklist de miners.
- * Critério: itemId começa com "M-" (ex: M-001, M-002, M-003…)
- */
 export function isMinerItem(item: ChecklistItem): boolean {
   return item.itemId.startsWith("M-");
 }
 
-/**
- * Separa os itens do checklist em dois grupos:
- * - minerItems  → itens de miner (prefixo "M-")
- * - otherItems  → todos os demais itens preventivos
- */
 export function splitChecklistItems(items: ChecklistItem[]): {
   minerItems: ChecklistItem[];
   otherItems: ChecklistItem[];
@@ -71,10 +86,11 @@ const STATUS_CONFIG: Record<
   StatusItem,
   { label: string; icon: React.ElementType; color: string; bg: string; border: string }
 > = {
-  PENDENTE:       { label: "Pendente",  icon: Circle,        color: "text-gray-400",   bg: "bg-gray-50",   border: "border-gray-200"  },
-  OK:             { label: "OK",        icon: CheckCircle2,  color: "text-green-600",  bg: "bg-green-50",  border: "border-green-200"  },
-  NAO_APLICAVEL:  { label: "N/A",       icon: MinusCircle,   color: "text-gray-400",   bg: "bg-gray-50",   border: "border-gray-200"  },
-  REQUER_ATENCAO: { label: "Atenção",   icon: AlertTriangle, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" },
+  PENDENTE:               { label: "Pendente",                icon: Circle,        color: "text-gray-400",   bg: "bg-gray-50",   border: "border-gray-200"  },
+  CONFORME:               { label: "Conforme",                icon: CheckCircle2,  color: "text-green-600",  bg: "bg-green-50",  border: "border-green-200"  },
+  NAO_APLICAVEL:          { label: "N/A",                     icon: MinusCircle,   color: "text-gray-400",   bg: "bg-gray-50",   border: "border-gray-200"  },
+  NAO_CONFORME:           { label: "Não conforme",            icon: AlertTriangle, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" },
+  CONFORME_COM_RESSALVAS: { label: "Conforme com ressalvas",  icon: BookOpenCheck, color: "text-blue-600",   bg: "bg-blue-50",   border: "border-blue-200"  },
 };
 
 const PERIODICIDADE_COLOR: Record<string, string> = {
@@ -117,7 +133,6 @@ function DialogComoFazer({
       <DialogPortal>
         <DarkOverlay />
         <DialogContent className="max-w-lg max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl">
-          {/* Header */}
           <DialogHeader className="flex-row items-center gap-3 p-5 border-b border-gray-100 space-y-0">
             <div
               className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
@@ -135,7 +150,6 @@ function DialogComoFazer({
             </div>
           </DialogHeader>
 
-          {/* Passos */}
           <div className="flex-1 overflow-y-auto p-5">
             {instrucoes ? (
               <ol className="space-y-3">
@@ -160,7 +174,6 @@ function DialogComoFazer({
             )}
           </div>
 
-          {/* Footer */}
           <div className="p-4 border-t border-gray-100 bg-gray-50">
             <p className="text-xs text-gray-400 text-center">Manual ANTSPACE HK3 V6 · Radius Mining</p>
           </div>
@@ -170,70 +183,187 @@ function DialogComoFazer({
   );
 }
 
-// ─── Dialog: Ativo do item ────────────────────────────────────────────────────
+// ─── Dialog: Todos os ativos do checklist ─────────────────────────────────────
 
-function DialogAtivo({
-  item,
+function DialogAtivos({
+  open,
   onClose,
+  items,
 }: {
-  item: ChecklistItem | null;
+  open: boolean;
   onClose: () => void;
+  items: ChecklistItem[];
 }) {
+  const [fotoExpandida, setFotoExpandida] = useState<{ url: string; nome: string } | null>(null);
+
+  // Deduplica ativos por nome, acumula os itens relacionados.
+  // getAssets() normaliza tanto `assets[]` quanto `asset` legado.
+  const ativosMap = items.reduce<
+    Record<string, { asset: AssetInfo; itens: ChecklistItem[] }>
+  >((acc, item) => {
+    for (const asset of getAssets(item)) {
+      if (!asset.nome) continue;
+      const key = asset.nome;
+      if (!acc[key]) acc[key] = { asset, itens: [] };
+      // Não duplica o mesmo item para o mesmo ativo
+      if (!acc[key].itens.find((i) => i.id === item.id)) {
+        acc[key].itens.push(item);
+      }
+    }
+    return acc;
+  }, {});
+
+  const ativos = Object.values(ativosMap);
+
   return (
-    <Dialog open={!!item} onOpenChange={(open) => !open && onClose()}>
-      <DialogPortal>
-        <DarkOverlay />
-        <DialogContent className="max-w-sm rounded-2xl">
-          <DialogHeader>
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-violet-100 flex items-center justify-center shrink-0">
+    <>
+      {/* Foto expandida */}
+      <Dialog open={!!fotoExpandida} onOpenChange={(open) => !open && setFotoExpandida(null)}>
+        <DialogPortal>
+          <DialogOverlay className="bg-black/90 backdrop-blur-md" />
+          <DialogContent className="max-w-3xl w-full p-0 bg-transparent border-0 shadow-none">
+            <DialogTitle className="sr-only">Foto expandida</DialogTitle>
+            <DialogDescription className="sr-only">Visualização ampliada da foto do ativo</DialogDescription>
+            {fotoExpandida && (
+              <div className="relative w-full">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/api/files/anexo?src=${encodeURIComponent(fotoExpandida.url)}&inline=1`}
+                  alt={fotoExpandida.nome}
+                  className="w-full max-h-[80vh] object-contain rounded-2xl"
+                />
+                <p className="text-center text-white/60 text-xs mt-3">{fotoExpandida.nome}</p>
+              </div>
+            )}
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
+
+      {/* Modal principal */}
+      <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
+        <DialogPortal>
+          <DarkOverlay />
+          <DialogContent className="max-w-2xl w-full max-h-[85vh] flex flex-col gap-0 p-0 overflow-hidden rounded-2xl">
+            {/* Header */}
+            <DialogHeader className="flex-row items-center gap-3 p-5 border-b border-gray-100 space-y-0 shrink-0">
+              <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-violet-100">
                 <Package2 className="w-4 h-4 text-violet-600" />
               </div>
-              <DialogTitle className="text-sm font-semibold text-gray-800">Ativo do item</DialogTitle>
-            </div>
-            <DialogDescription className="sr-only">
-              Detalhes do ativo associado a este item do checklist.
-            </DialogDescription>
-          </DialogHeader>
+              <div className="flex-1 min-w-0">
+                <DialogTitle className="text-sm font-semibold text-gray-900">
+                  Ativos do Checklist
+                </DialogTitle>
+                <p className="text-xs text-gray-400 mt-0.5">
+                  {ativos.length} ativo{ativos.length !== 1 ? "s" : ""} encontrado{ativos.length !== 1 ? "s" : ""}
+                </p>
+              </div>
+            </DialogHeader>
 
-          {item?.asset && (
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="relative w-20 h-20 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shrink-0">
-                  {item.asset.fotoUrl ? (
-                    <Image
-                      src={item.asset.fotoUrl}
-                      alt={item.asset.nome ?? "Ativo"}
-                      fill
-                      className="object-cover"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-[10px] text-gray-400 text-center leading-tight px-1">
-                      Sem foto
+            {/* Lista de ativos */}
+            <div className="flex-1 overflow-y-auto">
+              {ativos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center px-6">
+                  <Package2 className="w-10 h-10 text-gray-300 mb-3" />
+                  <p className="text-sm text-gray-500">Nenhum ativo vinculado a este checklist.</p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-50">
+                  {ativos.map(({ asset, itens }) => (
+                    <div key={asset.nome} className="p-5">
+                      <div className="flex items-start gap-4">
+                        {/* Foto do ativo — clicável para expandir */}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            asset.fotoUrl &&
+                            setFotoExpandida({ url: asset.fotoUrl, nome: asset.nome ?? "Ativo" })
+                          }
+                          className={cn(
+                            "relative w-20 h-20 rounded-xl overflow-hidden border border-gray-200 bg-gray-50 shrink-0 transition-all",
+                            asset.fotoUrl
+                              ? "cursor-zoom-in hover:ring-2 hover:ring-violet-400 hover:border-violet-300"
+                              : "cursor-default"
+                          )}
+                        >
+                          {asset.fotoUrl ? (
+                            <>
+                              <Image
+                                src={asset.fotoUrl}
+                                alt={asset.nome ?? "Ativo"}
+                                fill
+                                className="object-cover"
+                                unoptimized
+                                sizes="80px"
+                              />
+                              <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors flex items-center justify-center">
+                                <svg
+                                  className="w-5 h-5 text-white opacity-0 group-hover:opacity-100 drop-shadow"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth={2}
+                                >
+                                  <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
+                                </svg>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="flex h-full items-center justify-center text-[10px] text-gray-400 text-center leading-tight px-1">
+                              Sem foto
+                            </div>
+                          )}
+                        </button>
+
+                        {/* Info do ativo */}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div>
+                              <p className="text-sm font-semibold text-gray-900">{asset.nome}</p>
+                              {asset.codigo && (
+                                <p className="text-xs font-mono text-gray-500 mt-0.5">{asset.codigo}</p>
+                              )}
+                            </div>
+                            <span className="text-xs text-gray-400 shrink-0">
+                              {itens.length} item{itens.length !== 1 ? "ns" : ""}
+                            </span>
+                          </div>
+
+                          {/* Tags dos itens vinculados com status colorido */}
+                          <div className="mt-2 flex flex-wrap gap-1.5">
+                            {itens.map((item) => (
+                              <span
+                                key={item.id}
+                                className={cn(
+                                  "text-[11px] px-2 py-0.5 rounded-full border font-medium",
+                                  STATUS_CONFIG[item.status].bg,
+                                  STATUS_CONFIG[item.status].color,
+                                  STATUS_CONFIG[item.status].border
+                                )}
+                              >
+                                {item.itemId} · {item.descricao.length > 40
+                                  ? item.descricao.slice(0, 40) + "…"
+                                  : item.descricao}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                  )}
+                  ))}
                 </div>
-                <div className="min-w-0 space-y-1">
-                  <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold">Nome</p>
-                  <p className="text-sm font-semibold text-gray-900">{item.asset.nome ?? "—"}</p>
-                  {item.asset.codigo && (
-                    <>
-                      <p className="text-[10px] uppercase tracking-wide text-gray-400 font-semibold mt-2">Código</p>
-                      <p className="text-xs font-mono text-gray-700">{item.asset.codigo}</p>
-                    </>
-                  )}
-                </div>
-              </div>
-              <div className="rounded-xl bg-violet-50 border border-violet-100 px-3 py-2">
-                <p className="text-[10px] text-violet-500 font-semibold uppercase tracking-wide mb-0.5">Item do checklist</p>
-                <p className="text-xs text-violet-800 leading-snug">{item.descricao}</p>
-              </div>
+              )}
             </div>
-          )}
-        </DialogContent>
-      </DialogPortal>
-    </Dialog>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-gray-100 bg-gray-50 shrink-0">
+              <p className="text-xs text-gray-400 text-center">
+                Clique na foto para expandir · {items.length} item{items.length !== 1 ? "ns" : ""} no checklist
+              </p>
+            </div>
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
+    </>
   );
 }
 
@@ -244,17 +374,78 @@ function ChecklistItemList({
   canEdit,
   osId,
   onItemsChange,
+  onOpenAtivos,
 }: {
   items: ChecklistItem[];
   canEdit: boolean;
   osId: string;
   onItemsChange: (updatedItem: ChecklistItem) => void;
+  onOpenAtivos: () => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
   const [obsEdit, setObsEdit] = useState<Record<string, string>>({});
   const [manualItem, setManualItem] = useState<ManualDialogItem | null>(null);
-  const [ativoItem, setAtivoItem] = useState<ChecklistItem | null>(null);
+
+  // ── Fotos por item ───────────────────────────────────────────────────
+  const [fotosMap, setFotosMap] = useState<Record<string, AnexoFoto[]>>(() =>
+    items.reduce<Record<string, AnexoFoto[]>>((acc, item) => {
+      acc[item.id] = item.fotos ?? [];
+      return acc;
+    }, {})
+  );
+  const [uploadingFoto, setUploadingFoto] = useState<string | null>(null);
+  const [deletingFoto, setDeletingFoto] = useState<string | null>(null);
+
+  async function handleFotoUpload(item: ChecklistItem, file: File) {
+    setUploadingFoto(item.id);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res = await fetch(`/api/os/${osId}/checklist/${item.id}/anexos`, {
+        method: "POST",
+        body: fd,
+      });
+      if (res.ok) {
+        const { anexo } = await res.json();
+        setFotosMap((prev) => ({
+          ...prev,
+          [item.id]: [...(prev[item.id] ?? []), anexo],
+        }));
+        toast.success("Foto adicionada");
+      } else {
+        const err = await res.json();
+        toast.error(err.error ?? "Erro ao enviar foto");
+      }
+    } catch {
+      toast.error("Erro de conexão ao enviar foto");
+    } finally {
+      setUploadingFoto(null);
+    }
+  }
+
+  async function handleFotoDelete(item: ChecklistItem, anexoId: string) {
+    setDeletingFoto(anexoId);
+    try {
+      const res = await fetch(
+        `/api/os/${osId}/checklist/${item.id}/anexos?anexoId=${anexoId}`,
+        { method: "DELETE" }
+      );
+      if (res.ok) {
+        setFotosMap((prev) => ({
+          ...prev,
+          [item.id]: (prev[item.id] ?? []).filter((f) => f.id !== anexoId),
+        }));
+        toast.success("Foto removida");
+      } else {
+        toast.error("Erro ao remover foto");
+      }
+    } catch {
+      toast.error("Erro de conexão ao remover foto");
+    } finally {
+      setDeletingFoto(null);
+    }
+  }
 
   async function atualizarStatus(item: ChecklistItem, novoStatus: StatusItem) {
     setSaving(item.id);
@@ -268,8 +459,9 @@ function ChecklistItemList({
       if (res.ok) {
         const { item: updated } = await res.json();
         onItemsChange(updated);
-        if (novoStatus === "OK") toast.success("Item marcado como OK");
-        if (novoStatus === "REQUER_ATENCAO") toast.warning("Item marcado como Atenção");
+        if (novoStatus === "CONFORME") toast.success("Item marcado como Conforme");
+        if (novoStatus === "NAO_CONFORME") toast.warning("Item marcado como Não conforme");
+        if (novoStatus === "CONFORME_COM_RESSALVAS") toast.warning("Item marcado como Conforme com ressalvas");
       } else {
         toast.error("Erro ao atualizar item");
       }
@@ -312,7 +504,6 @@ function ChecklistItemList({
   return (
     <>
       <DialogComoFazer item={manualItem} onClose={() => setManualItem(null)} />
-      <DialogAtivo item={ativoItem} onClose={() => setAtivoItem(null)} />
 
       <div className="divide-y divide-gray-50">
         {Object.entries(porSubsistema).map(([subsistema, subitems]) => (
@@ -321,7 +512,7 @@ function ChecklistItemList({
             <div className="px-5 py-2 bg-gray-50/60 flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">{subsistema}</span>
               <span className="text-xs text-gray-400">
-                {subitems.filter((i) => i.status === "OK").length}/{subitems.length}
+                {subitems.filter((i) => i.status === "CONFORME").length}/{subitems.length}
               </span>
             </div>
 
@@ -330,7 +521,8 @@ function ChecklistItemList({
               const Icon = s.icon;
               const isExpanded = expanded === item.id;
               const temInstrucoes = !!INSTRUCOES_MANUAL[item.itemId];
-              const temAtivo = !!item.asset?.nome;
+              const itemAssets = getAssets(item);
+              const temAtivos = itemAssets.length > 0;
 
               return (
                 <div key={item.id} className={cn("transition-colors", s.bg)}>
@@ -341,7 +533,7 @@ function ChecklistItemList({
 
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between gap-2">
-                        <p className={cn("text-sm leading-snug", item.status === "OK" ? "line-through text-gray-400" : "text-gray-800")}>
+                        <p className={cn("text-sm leading-snug", item.status === "CONFORME" ? "line-through text-gray-400" : "text-gray-800")}>
                           <span className="font-mono text-xs text-gray-400 mr-1">{item.itemId}</span>
                           {item.descricao}
                         </p>
@@ -368,6 +560,14 @@ function ChecklistItemList({
                           </span>
                         )}
 
+                        {/* Indicador de fotos */}
+                        {(fotosMap[item.id] ?? []).length > 0 && (
+                          <span className="flex items-center gap-0.5 text-xs text-blue-500 font-medium">
+                            <Camera className="w-3 h-3" />
+                            {(fotosMap[item.id] ?? []).length} foto{(fotosMap[item.id] ?? []).length > 1 ? "s" : ""}
+                          </span>
+                        )}
+
                         {temInstrucoes && (
                           <button
                             onClick={(e) => {
@@ -381,23 +581,27 @@ function ChecklistItemList({
                           </button>
                         )}
 
-                        {temAtivo && (
+                        {/* Badge de ativos — clicável, abre DialogAtivos com TODOS os ativos do checklist */}
+                        {temAtivos && (
                           <button
+                            type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setAtivoItem(item);
+                              onOpenAtivos();
                             }}
-                            className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors border border-violet-200"
+                            className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors border border-violet-200 cursor-pointer"
                           >
                             <Package2 className="w-3 h-3" />
-                            {item.asset!.nome}
+                            {itemAssets.length === 1
+                              ? itemAssets[0].nome
+                              : `${itemAssets.length} ativos`}
                           </button>
                         )}
                       </div>
                     </div>
                   </div>
 
-                  {/* Expandido — status + observação */}
+                  {/* Expandido — status + observação + fotos */}
                   {isExpanded && (
                     <div className="px-5 pb-4 ml-8 space-y-3">
                       {canEdit && (
@@ -452,6 +656,88 @@ function ChecklistItemList({
                           </p>
                         )}
                       </div>
+
+                      {/* ── Fotos do item ─────────────────────────────────────── */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs text-gray-400">
+                            Fotos do item
+                            {(fotosMap[item.id] ?? []).length > 0 && (
+                              <span className="ml-1 text-blue-500 font-medium">
+                                ({(fotosMap[item.id] ?? []).length})
+                              </span>
+                            )}
+                          </p>
+                          {canEdit && (
+                            <label
+                              className={cn(
+                                "flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border cursor-pointer transition-all font-medium",
+                                uploadingFoto === item.id
+                                  ? "opacity-50 pointer-events-none bg-gray-50 text-gray-400 border-gray-200"
+                                  : "bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100"
+                              )}
+                            >
+                              {uploadingFoto === item.id ? (
+                                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                              ) : (
+                                <Camera className="w-3.5 h-3.5" />
+                              )}
+                              {uploadingFoto === item.id ? "Enviando..." : "Adicionar foto"}
+                              <input
+                                type="file"
+                                accept="image/jpeg,image/png,image/webp"
+                                className="sr-only"
+                                disabled={uploadingFoto === item.id}
+                                onChange={(e) => {
+                                  const file = e.target.files?.[0];
+                                  if (file) handleFotoUpload(item, file);
+                                  e.target.value = "";
+                                }}
+                              />
+                            </label>
+                          )}
+                        </div>
+
+                        {(fotosMap[item.id] ?? []).length > 0 ? (
+                          <div className="grid grid-cols-3 gap-2">
+                            {(fotosMap[item.id] ?? []).map((foto) => (
+                              <div
+                                key={foto.id}
+                                className="relative group rounded-xl overflow-hidden border border-gray-200 bg-gray-50 aspect-square"
+                              >
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img
+                                  src={`/api/files/anexo?src=${encodeURIComponent(foto.url)}&filename=${encodeURIComponent(foto.nome)}&inline=1`}
+                                  alt={foto.nome}
+                                  className="w-full h-full object-cover"
+                                />
+                                {canEdit && (
+                                  <button
+                                    disabled={deletingFoto === foto.id}
+                                    onClick={() => handleFotoDelete(item, foto.id)}
+                                    className={cn(
+                                      "absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center transition-all",
+                                      "bg-black/60 text-white opacity-0 group-hover:opacity-100",
+                                      deletingFoto === foto.id && "opacity-100"
+                                    )}
+                                  >
+                                    {deletingFoto === foto.id ? (
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                    ) : (
+                                      <X className="w-3 h-3" />
+                                    )}
+                                  </button>
+                                )}
+                                <div className="absolute bottom-0 left-0 right-0 bg-black/40 px-1.5 py-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                  <p className="text-white text-[9px] truncate">{foto.nome}</p>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-gray-400 italic">Nenhuma foto adicionada.</p>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -469,9 +755,7 @@ function ChecklistItemList({
 interface ChecklistPreventivaProps {
   osId: string;
   items: ChecklistItem[];
-  /** true se o usuário tem permissão E a OS não está concluída */
   canEdit: boolean;
-  /** true se a OS possui miners associados */
   hasMinerChecklist?: boolean;
   asicAssetId?: string | null;
   containerId?: string | null;
@@ -486,17 +770,25 @@ export function ChecklistPreventiva({
   containerId,
 }: ChecklistPreventivaProps) {
   const [items, setItems] = useState(inicial);
+  const [dialogAtivosOpen, setDialogAtivosOpen] = useState(false);
 
   // Separa itens de miner dos demais
-  const { minerItems, otherItems } = splitChecklistItems(items);
-
-  // Se há miners → exibe só otherItems no preventivo; senão exibe tudo
+  const { otherItems } = splitChecklistItems(items);
   const preventivoItems = hasMinerChecklist ? otherItems : items;
 
-  const total   = preventivoItems.length;
-  const ok      = preventivoItems.filter((i) => i.status === "OK").length;
-  const atencao = preventivoItems.filter((i) => i.status === "REQUER_ATENCAO").length;
-  const pct     = total > 0 ? Math.round((ok / total) * 100) : 0;
+  // Contagem de ativos únicos — itera todos os assets de todos os itens
+  const totalAtivosUnicos = new Set(
+    preventivoItems.flatMap((i) => getAssets(i).map((a) => a.nome).filter(Boolean))
+  ).size;
+
+  const total       = preventivoItems.length;
+  const ok          = preventivoItems.filter((i) => i.status === "CONFORME").length;
+  const atencao     = preventivoItems.filter((i) => i.status === "NAO_CONFORME").length;
+  const okRessalvas = preventivoItems.filter((i) => i.status === "CONFORME_COM_RESSALVAS").length;
+  const tudo        = preventivoItems.filter((i) => i.status !== "PENDENTE").length;
+  const pct         = total > 0 ? Math.round((tudo / total) * 100) : 0;
+
+  void ok;
 
   function handleItemUpdate(updated: ChecklistItem) {
     setItems((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
@@ -504,12 +796,18 @@ export function ChecklistPreventiva({
 
   return (
     <div className="space-y-5">
-      {/* ── Verificação de Miners (renderizada aqui quando pertinente) ─── */}
+      {/* Dialog de todos os ativos — recebe TODOS os itens preventivos */}
+      <DialogAtivos
+        open={dialogAtivosOpen}
+        onClose={() => setDialogAtivosOpen(false)}
+        items={preventivoItems}
+      />
+
+      {/* ── Verificação de Miners ─────────────────────────────────────── */}
       {hasMinerChecklist && (
         <div className="bg-white rounded-2xl border border-cyan-100 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-cyan-50 flex items-center gap-3">
             <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500 to-blue-600 flex items-center justify-center shrink-0">
-              {/* Cpu icon inline para evitar import extra no preventiva */}
               <svg className="w-4 h-4 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
                 <rect x="4" y="4" width="16" height="16" rx="2" />
                 <rect x="9" y="9" width="6" height="6" />
@@ -534,24 +832,49 @@ export function ChecklistPreventiva({
         </div>
       )}
 
-      {/* ── Checklist Preventivo ─────────────────────────────────────── */}
+      {/* ── Checklist Preventivo ──────────────────────────────────────── */}
       <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
         {/* Header com progresso */}
         <div className="px-5 py-4 border-b border-gray-50">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-semibold text-gray-800">Checklist Preventivo</h3>
-            <div className="flex items-center gap-3 text-xs">
-              <span className="text-green-600 font-semibold">{ok}/{total} OK</span>
+          <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+            {/* Título + botão de ativos */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-semibold text-gray-800">Checklist Preventivo</h3>
+              {totalAtivosUnicos > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setDialogAtivosOpen(true)}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors border border-violet-200"
+                >
+                  <Package2 className="w-3 h-3" />
+                  {totalAtivosUnicos} ativo{totalAtivosUnicos !== 1 ? "s" : ""}
+                </button>
+              )}
+            </div>
+
+            {/* Stats de progresso */}
+            <div className="flex items-center gap-3 text-xs flex-wrap">
+              <span className="text-green-600 font-semibold">{tudo}/{total} Verificado</span>
               {atencao > 0 && <span className="text-orange-600 font-semibold">{atencao} atenção</span>}
+              {okRessalvas > 0 && <span className="text-blue-600 font-semibold">{okRessalvas} com ressalvas</span>}
               <span className="text-gray-400">{pct}%</span>
             </div>
           </div>
+
+          {/* Barra de progresso */}
           <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${pct}%`,
-                background: pct === 100 ? "#16a34a" : atencao > 0 ? "#ea580c" : "#8B1FA9",
+                background:
+                  pct === 100
+                    ? "#16a34a"
+                    : atencao > 0
+                    ? "#ea580c"
+                    : okRessalvas > 0
+                    ? "#155dfc"
+                    : "#8B1FA9",
               }}
             />
           </div>
@@ -563,6 +886,7 @@ export function ChecklistPreventiva({
             canEdit={canEdit}
             osId={osId}
             onItemsChange={handleItemUpdate}
+            onOpenAtivos={() => setDialogAtivosOpen(true)}
           />
         ) : (
           <div className="px-5 py-10 text-center text-sm text-gray-400">

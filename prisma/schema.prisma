@@ -11,6 +11,7 @@ datasource db {
 }
 
 enum Cargo {
+  ENGENHEIRO
   ADMIN
   SUPERVISOR
   TECNICO
@@ -69,9 +70,10 @@ enum TipoAtividadeCorretiva {
 
 enum StatusChecklistItem {
   PENDENTE
-  OK
+  CONFORME
   NAO_APLICAVEL
-  REQUER_ATENCAO
+  NAO_CONFORME
+  CONFORME_COM_RESSALVAS
 }
 
 // Status de um miner individual na execução de uma OS
@@ -106,7 +108,7 @@ model OrdemServico {
   titulo String
 
   tipoOS                     TipoOS
-  periodicidadesSelecionadas String[]                @default([])
+  periodicidadesSelecionadas String[]                 @default([])
   periodicidadePreventiva    PeriodicidadePreventiva?
   tipoAtividadeCorretiva     TipoAtividadeCorretiva?
 
@@ -131,15 +133,16 @@ model OrdemServico {
   dataConclusao DateTime?
 
   responsavelId String?
-  responsavel   Usuario?        @relation("Responsavel", fields: [responsavelId], references: [id])
+  responsavel   Usuario? @relation("Responsavel", fields: [responsavelId], references: [id])
   abertoPorId   String
-  abertoPor     Usuario         @relation("AbertoPor", fields: [abertoPorId], references: [id])
+  abertoPor     Usuario  @relation("AbertoPor", fields: [abertoPorId], references: [id])
 
-  comentarios    Comentario[]
-  historicoOS    HistoricoOS[]
-  anexos         Anexo[]
-  checklistItems ChecklistItemOS[]
-  minerChecks    MinerCheckOS[]   // checks de miners associados a esta OS
+  comentarios     Comentario[]
+  historicoOS     HistoricoOS[]
+  anexos          Anexo[]
+  anexosChecklist AnexoChecklist[]
+  checklistItems  ChecklistItemOS[]
+  minerChecks     MinerCheckOS[] // checks de miners associados a esta OS
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -148,18 +151,18 @@ model OrdemServico {
 }
 
 model Asset {
-  id        String   @id @default(cuid())
-  nome      String
-  codigo    String
-  fotoUrl   String?
+  id          String   @id @default(cuid())
+  nome        String
+  codigo      String
+  fotoUrl     String?
   // Tipo especial para ASICs — quando true, miners são gerenciados via MinerInstance
-  isAsicModel Boolean @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  isAsicModel Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   checklistItems         ChecklistItemOS[]
   checklistTemplateLinks AssetChecklistTemplate[]
-  minerInstances         MinerInstance[]          // instâncias de miners filhas
+  minerInstances         MinerInstance[] // instâncias de miners filhas
 
   @@map("assets")
 }
@@ -171,7 +174,7 @@ model MinerInstance {
   serialNumber String   @unique
   status       String   @default("ativo") // ativo | inativo | manutencao
   containerId  String?
-  assetId      String   // Asset pai (modelo "Antminer HQ3V6")
+  assetId      String // Asset pai (modelo "Antminer HQ3V6")
   asset        Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
@@ -186,17 +189,17 @@ model MinerInstance {
 
 // Registro do status de um miner individual durante execução de uma OS
 model MinerCheckOS {
-  id              String      @id @default(cuid())
+  id              String        @id @default(cuid())
   osId            String
-  os              OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  os              OrdemServico  @relation(fields: [osId], references: [id], onDelete: Cascade)
   minerInstanceId String
   minerInstance   MinerInstance @relation(fields: [minerInstanceId], references: [id], onDelete: Cascade)
-  status          StatusMiner @default(FUNCIONANDO)
+  status          StatusMiner   @default(FUNCIONANDO)
   observacao      String?
   atualizadoPorId String?
   atualizadoEm    DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   @@unique([osId, minerInstanceId])
   @@index([osId])
@@ -219,9 +222,9 @@ model AssetChecklistTemplate {
 }
 
 model ChecklistItemOS {
-  id    String       @id @default(cuid())
-  osId  String
-  os    OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
+  id   String       @id @default(cuid())
+  osId String
+  os   OrdemServico @relation(fields: [osId], references: [id], onDelete: Cascade)
 
   itemId        String
   descricao     String
@@ -230,7 +233,7 @@ model ChecklistItemOS {
   referencia    String
 
   assetId String?
-  asset   Asset? @relation(fields: [assetId], references: [id], onDelete: SetNull)
+  asset   Asset?  @relation(fields: [assetId], references: [id], onDelete: SetNull)
 
   status     StatusChecklistItem @default(PENDENTE)
   observacao String?
@@ -238,11 +241,30 @@ model ChecklistItemOS {
   atualizadoPorId String?
   atualizadoEm    DateTime?
 
+  anexos AnexoChecklist[]
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([assetId])
   @@map("checklist_items_os")
+}
+
+model AnexoChecklist {
+  id              String          @id @default(cuid())
+  checklistItemId String
+  checklistItem   ChecklistItemOS @relation(fields: [checklistItemId], references: [id], onDelete: Cascade)
+  osId            String
+  os              OrdemServico    @relation(fields: [osId], references: [id], onDelete: Cascade)
+  nome            String
+  url             String
+  tipo            String
+  tamanho         Int
+  createdAt       DateTime        @default(now())
+
+  @@index([checklistItemId])
+  @@index([osId])
+  @@map("anexos_checklist")
 }
 
 model HistoricoOS {

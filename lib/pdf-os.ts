@@ -72,6 +72,7 @@ export type OSReportData = {
     assetNome?: string | null
     assetCodigo?: string | null
     assetFotoUrl?: string | null
+    fotos?: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number }>
   }>
   comentarios: Array<{ texto: string; usuario: string; createdAt: string }>
   historico: Array<{
@@ -734,6 +735,48 @@ export async function generateOSPDF(data: OSReportData) {
     const grupos: Record<string, typeof data.checklistItems> = {}
     for (const item of data.checklistItems) { (grupos[item.subsistema] ??= []).push(item) }
 
+    // Pré-carrega todas as fotos de checklist em paralelo
+    type FotoCarregada = {
+      itemId: string   // itemId do checklist (ex: "P-001")
+      dataUrl: string
+      fmt: "PNG" | "JPEG"
+      clean: string
+      w: number
+      h: number
+      nome: string
+    }
+
+    const todasFotos: FotoCarregada[] = (
+      await Promise.all(
+        data.checklistItems.flatMap((item) =>
+          (item.fotos ?? []).map(async (foto) => {
+            try {
+              const proxyUrl = `/api/files/anexo?src=${encodeURIComponent(foto.url)}&filename=${encodeURIComponent(foto.nome)}&inline=1`
+              const rawDataUrl = await urlToDataURL(proxyUrl)
+              const { dataUrl, width, height } = await normalizeImageOrientation(rawDataUrl)
+              return {
+                itemId: item.itemId,
+                dataUrl,
+                fmt: detectFormat(dataUrl) as "PNG" | "JPEG",
+                clean: stripPrefix(dataUrl),
+                w: width,
+                h: height,
+                nome: foto.nome,
+              } satisfies FotoCarregada
+            } catch {
+              return null
+            }
+          })
+        )
+      )
+    ).filter((f): f is FotoCarregada => f !== null)
+
+    // Mapa: itemId → fotos carregadas
+    const fotosPorItem: Record<string, FotoCarregada[]> = {}
+    for (const f of todasFotos) {
+      (fotosPorItem[f.itemId] ??= []).push(f)
+    }
+
     for (const [sub, items] of Object.entries(grupos)) {
       if (y > H - 45) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
 
@@ -749,38 +792,163 @@ export async function generateOSPDF(data: OSReportData) {
       doc.text(`${subOK}/${items.length} OK`, W - MARGIN - 3, y + 4.2, { align: "right" })
       y += 7
 
-      autoTable(doc, {
-        startY: y,
-        head: [["ID", "Descrição / Ativo", "Periodicidade", "Status", "Observação"]],
-        body: items.map((item) => [
-          item.itemId,
-          `${item.descricao}${item.assetNome ? `\nAtivo: ${item.assetNome}${item.assetCodigo ? ` (${item.assetCodigo})` : ""}` : ""}`,
-          item.periodicidade,
-          checklistStatusLabel(item.status),
-          item.observacao || "—",
-        ]),
-        theme: "plain",
-        headStyles: {
-          fillColor: C.charcoal, textColor: C.white,
-          fontSize: 6.5, fontStyle: "bold",
-        },
-        styles: { fontSize: 7, cellPadding: [1.5, 2], overflow: "linebreak" },
-        columnStyles: {
-          0: { cellWidth: 12 },
-          1: { cellWidth: 72 },
-          2: { cellWidth: 22 },
-          3: { cellWidth: 18 },
-        },
-        margin: { left: MARGIN, right: MARGIN },
-        didParseCell(hookData) {
-          if (hookData.section === "body" && hookData.column.index === 3) {
-            const s = items[hookData.row.index]?.status ?? ""
-            hookData.cell.styles.textColor = checklistStatusColor(s)
-            hookData.cell.styles.fontStyle  = "bold"
+      // Renderiza cada item individualmente com suas fotos logo abaixo
+      for (const item of items) {
+        const itemFotos = fotosPorItem[item.itemId] ?? []
+        const statusLbl = checklistStatusLabel(item.status)
+        const statusClr = checklistStatusColor(item.status)
+
+        // ── Linha de cabeçalho do item ────────────────────────────────
+        if (y > H - 30) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
+
+        // Fundo zebrado por item
+        const itemBgColor: Color = item.status === "OK"
+          ? [240, 253, 244]      // verde claro
+          : item.status === "REQUER_ATENCAO"
+          ? [255, 247, 237]      // laranja claro
+          : C.surface
+
+        doc.setFillColor(...itemBgColor)
+        doc.rect(MARGIN, y, W - MARGIN * 2, 0.3, "F") // separador sutil
+
+        // Barra lateral colorida por status
+        doc.setFillColor(...statusClr)
+        doc.rect(MARGIN, y, 1.5, 10, "F")
+
+        // ID do item
+        doc.setFontSize(6.5); doc.setFont("helvetica", "bold")
+        doc.setTextColor(...C.muted)
+        doc.text(item.itemId, MARGIN + 4, y + 4.5)
+
+        // Descrição
+        doc.setFontSize(7.5); doc.setFont("helvetica", "normal")
+        doc.setTextColor(...C.dark)
+        const descLines = doc.splitTextToSize(item.descricao, W - MARGIN * 2 - 65)
+        doc.text(descLines[0], MARGIN + 18, y + 4.5)
+
+        // Periodicidade (pill direita)
+        doc.setFontSize(6); doc.setFont("helvetica", "normal")
+        doc.setTextColor(...C.muted)
+        doc.text(item.periodicidade, W - MARGIN - 40, y + 4.5, { align: "right" })
+
+        // Status (pill)
+        doc.setFontSize(6.5); doc.setFont("helvetica", "bold")
+        doc.setTextColor(...statusClr)
+        doc.text(statusLbl, W - MARGIN - 3, y + 4.5, { align: "right" })
+
+        y += 10
+
+        // Observação (se houver)
+        if (item.observacao) {
+          if (y > H - 20) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
+          doc.setFillColor(...itemBgColor)
+          doc.rect(MARGIN, y, W - MARGIN * 2, 8, "F")
+          doc.setFillColor(...C.border)
+          doc.rect(MARGIN, y, 1.5, 8, "F")
+          doc.setFontSize(6); doc.setFont("helvetica", "italic")
+          doc.setTextColor(...C.muted)
+          doc.text("Observação:", MARGIN + 4, y + 3)
+          doc.setFont("helvetica", "normal"); doc.setTextColor(...C.dark)
+          const obsLines = doc.splitTextToSize(item.observacao, W - MARGIN * 2 - 30)
+          doc.text(obsLines[0], MARGIN + 22, y + 3)
+          if (obsLines.length > 1) {
+            y += 4
+            doc.rect(MARGIN, y, W - MARGIN * 2, 6, "F")
+            doc.rect(MARGIN, y, 1.5, 6, "F")
+            doc.text(obsLines[1], MARGIN + 4, y + 4)
           }
-        },
-      })
-      y = (doc as any).lastAutoTable.finalY + 4
+          y += 9
+        }
+
+        // ── Fotos do item (2 por linha, portrait; 1 por linha, landscape) ──
+        if (itemFotos.length > 0) {
+          const FOTO_GAP     = 4
+          const CAPTION_H_F  = 6
+          const MAX_FOTO_H   = 55   // altura máx de uma foto no relatório
+          const COL_W        = (W - MARGIN * 2 - FOTO_GAP) / 2
+
+          let fi = 0
+          while (fi < itemFotos.length) {
+            const foto = itemFotos[fi]
+            const isLandscape = foto.w >= foto.h
+
+            if (isLandscape) {
+              // 1 foto ocupando toda a largura
+              const scale = Math.min((W - MARGIN * 2) / foto.w, MAX_FOTO_H / foto.h)
+              const fw = foto.w * scale
+              const fh = foto.h * scale
+              const neededH = fh + CAPTION_H_F + 4
+
+              if (y + neededH > H - 18) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
+
+              const fx = MARGIN + ((W - MARGIN * 2) - fw) / 2
+              doc.setFillColor(...C.border)
+              doc.roundedRect(fx - 1, y - 1, fw + 2, fh + 2, 1, 1, "F")
+              doc.addImage(foto.clean, foto.fmt, fx, y, fw, fh, undefined, "FAST")
+
+              doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
+              doc.setTextColor(...C.muted)
+              const cap = doc.splitTextToSize(foto.nome, W - MARGIN * 2)
+              doc.text(cap[0], W / 2, y + fh + 4, { align: "center" })
+
+              y += fh + CAPTION_H_F + 4
+              fi++
+            } else {
+              // Portrait: tenta parear 2 fotos lado a lado
+              const fotoA = itemFotos[fi]
+              const fotoB = itemFotos[fi + 1] && !itemFotos[fi + 1].dataUrl
+                ? itemFotos[fi + 1]
+                : null
+
+              const scaleA = Math.min(COL_W / fotoA.w, MAX_FOTO_H / fotoA.h)
+              const fwA = fotoA.w * scaleA
+              const fhA = fotoA.h * scaleA
+
+              let fwB = 0, fhB = 0
+              if (fotoB) {
+                const scaleB = Math.min(COL_W / fotoB.w, MAX_FOTO_H / fotoB.h)
+                fwB = fotoB.w * scaleB
+                fhB = fotoB.h * scaleB
+              }
+
+              const rowH = Math.max(fhA, fhB || 0)
+              const neededH = rowH + CAPTION_H_F + 4
+
+              if (y + neededH > H - 18) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
+
+              // Foto A (esquerda)
+              const fxA = MARGIN + (COL_W - fwA) / 2
+              doc.setFillColor(...C.border)
+              doc.roundedRect(fxA - 1, y - 1, fwA + 2, fhA + 2, 1, 1, "F")
+              doc.addImage(fotoA.clean, fotoA.fmt, fxA, y, fwA, fhA, undefined, "FAST")
+              doc.setFontSize(6.5); doc.setFont("helvetica", "normal"); doc.setTextColor(...C.muted)
+              const capA = doc.splitTextToSize(fotoA.nome, COL_W - 4)
+              doc.text(capA[0], fxA + fwA / 2, y + fhA + 4, { align: "center" })
+
+              // Foto B (direita, se existir)
+              if (fotoB) {
+                const fxB = MARGIN + COL_W + FOTO_GAP + (COL_W - fwB) / 2
+                doc.setFillColor(...C.border)
+                doc.roundedRect(fxB - 1, y - 1, fwB + 2, fhB + 2, 1, 1, "F")
+                doc.addImage(fotoB.clean, fotoB.fmt, fxB, y, fwB, fhB, undefined, "FAST")
+                const capB = doc.splitTextToSize(fotoB.nome, COL_W - 4)
+                doc.text(capB[0], fxB + fwB / 2, y + fhB + 4, { align: "center" })
+                fi++
+              }
+
+              y += rowH + CAPTION_H_F + 4
+              fi++
+            }
+          }
+          y += 2 // pequeno respiro após o bloco de fotos
+        }
+
+        // Separador fino entre itens
+        doc.setDrawColor(...C.border)
+        doc.setLineWidth(0.2)
+        doc.line(MARGIN + 2, y, W - MARGIN, y)
+        y += 3
+      }
     }
   }
 
@@ -935,24 +1103,23 @@ export async function generateOSPDF(data: OSReportData) {
   }
 
   // ══════════════════════════════════════════
-  // REGISTRO FOTOGRÁFICO — 1 ou 2 por página
+  // REGISTRO FOTOGRÁFICO — as fotos já aparecem inline junto a cada item
+  // do checklist. Aqui mantemos apenas anexos PDF avulsos da OS.
   // ══════════════════════════════════════════
   const imagens = data.anexos.filter((a) => a.tipo.startsWith("image/"))
   const pdfsAnexos = data.anexos.filter((a) => a.tipo === "application/pdf")
 
+  // Fotos avulsas da OS (não vinculadas a nenhum item do checklist) ─────
+  // São aquelas que existem em data.anexos mas cujo conteúdo não foi
+  // vinculado a nenhum item. Exibimos numa seção dedicada ao final.
   if (imagens.length > 0) {
-    // Área útil disponível por foto (descontando header, footer e legendas)
-    const PHOTO_MARGIN_TOP = 26    // abaixo do header
-    const PHOTO_MARGIN_BOT = 18    // acima do footer
+    const PHOTO_MARGIN_TOP = 26
+    const PHOTO_MARGIN_BOT = 18
     const USABLE_H = H - PHOTO_MARGIN_TOP - PHOTO_MARGIN_BOT
     const USABLE_W = W - MARGIN * 2
-    const CAPTION_H = 10           // altura reservada para legenda + gap
-    const GAP = 6                  // espaço entre as 2 fotos quando lado a lado
+    const CAPTION_H = 10
+    const GAP = 6
 
-    /**
-     * Calcula as dimensões de renderização respeitando aspect ratio,
-     * limitado a maxW × maxH.
-     */
     function fitDims(
       imgW: number, imgH: number,
       maxW: number, maxH: number
@@ -961,7 +1128,6 @@ export async function generateOSPDF(data: OSReportData) {
       return { w: imgW * scale, h: imgH * scale }
     }
 
-    // Pré-carrega e normaliza todas as imagens (EXIF + canvas)
     type LoadedImage = {
       nome: string
       dataUrl: string
@@ -993,9 +1159,6 @@ export async function generateOSPDF(data: OSReportData) {
       })
     )
 
-    // Agrupa imagens em "slots" de página:
-    // - Landscape (ou sem par) → 1 por página (ocupa toda a largura)
-    // - Portrait  → até 2 por página lado a lado
     type PageSlot =
       | { type: "single"; img: LoadedImage }
       | { type: "double"; left: LoadedImage; right: LoadedImage }
@@ -1009,32 +1172,28 @@ export async function generateOSPDF(data: OSReportData) {
       if (!item) { slots.push({ type: "error", nome: "desconhecido" }); continue; }
 
       if (item.isLandscape) {
-        // Landscape sempre sozinha
         slots.push({ type: "single", img: item })
       } else {
-        // Portrait: tenta parear com a próxima portrait
         const nextIdx = queue.findIndex((q) => q !== null && !q.isLandscape)
         if (nextIdx !== -1) {
           const pair = queue.splice(nextIdx, 1)[0]!
           slots.push({ type: "double", left: item, right: pair })
         } else {
-          // Sem par, coloca sozinha centralizada
           slots.push({ type: "single", img: item })
         }
       }
     }
 
-    // Renderiza cada slot em sua própria página
     let firstPhotoPage = true
     for (const slot of slots) {
       doc.addPage()
       if (firstPhotoPage) {
-        drawHeader("Registro Fotográfico")
+        drawHeader("Anexos Fotográficos da OS")
         firstPhotoPage = false
         y = PHOTO_MARGIN_TOP
-        y = sectionBar(y, "6. Registro Fotográfico")
+        y = sectionBar(y, "Anexos Fotográficos da OS")
       } else {
-        drawHeader("Registro Fotográfico (cont.)")
+        drawHeader("Anexos Fotográficos (cont.)")
         y = PHOTO_MARGIN_TOP
       }
 
@@ -1051,13 +1210,9 @@ export async function generateOSPDF(data: OSReportData) {
         const { w: rw, h: rh } = fitDims(img.w, img.h, USABLE_W, availableH)
         const imgX = MARGIN + (USABLE_W - rw) / 2
         const imgY = y + (availableH - rh) / 2
-
-        // Moldura com sombra sutil
         doc.setFillColor(...C.border)
         doc.roundedRect(imgX - 1.5, imgY - 1.5, rw + 3, rh + 3, 2, 2, "F")
         doc.addImage(img.clean, img.fmt, imgX, imgY, rw, rh, undefined, "FAST")
-
-        // Legenda
         doc.setFontSize(7.5); doc.setFont("helvetica", "normal")
         doc.setTextColor(...C.muted)
         const nomeFit = doc.splitTextToSize(img.nome, USABLE_W)
@@ -1067,36 +1222,23 @@ export async function generateOSPDF(data: OSReportData) {
       if (slot.type === "double") {
         const colMaxW = (USABLE_W - GAP) / 2
         const { left, right } = slot
-
         const leftFit  = fitDims(left.w,  left.h,  colMaxW, availableH)
         const rightFit = fitDims(right.w, right.h, colMaxW, availableH)
-
-        // Alinha pelo topo, centraliza horizontalmente em cada coluna
         const leftX  = MARGIN + (colMaxW - leftFit.w)  / 2
         const rightX = MARGIN + colMaxW + GAP + (colMaxW - rightFit.w) / 2
         const photoY = y
-
-        // Molduras
         doc.setFillColor(...C.border)
         doc.roundedRect(leftX - 1.5,  photoY - 1.5, leftFit.w  + 3, leftFit.h  + 3, 2, 2, "F")
         doc.roundedRect(rightX - 1.5, photoY - 1.5, rightFit.w + 3, rightFit.h + 3, 2, 2, "F")
-
         doc.addImage(left.clean,  left.fmt,  leftX,  photoY, leftFit.w,  leftFit.h,  undefined, "FAST")
         doc.addImage(right.clean, right.fmt, rightX, photoY, rightFit.w, rightFit.h, undefined, "FAST")
-
-        // Legendas
         doc.setFontSize(7.5); doc.setFont("helvetica", "normal")
         doc.setTextColor(...C.muted)
         const maxLegW = colMaxW - 4
-
         const leftCaption  = doc.splitTextToSize(left.nome,  maxLegW)
         const rightCaption = doc.splitTextToSize(right.nome, maxLegW)
-
-        const leftCaptionY  = photoY + leftFit.h  + 6
-        const rightCaptionY = photoY + rightFit.h + 6
-
-        doc.text(leftCaption[0],  leftX  + leftFit.w  / 2, leftCaptionY,  { align: "center" })
-        doc.text(rightCaption[0], rightX + rightFit.w / 2, rightCaptionY, { align: "center" })
+        doc.text(leftCaption[0],  leftX  + leftFit.w  / 2, photoY + leftFit.h  + 6, { align: "center" })
+        doc.text(rightCaption[0], rightX + rightFit.w / 2, photoY + rightFit.h + 6, { align: "center" })
       }
     }
   }

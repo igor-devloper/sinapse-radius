@@ -5,7 +5,7 @@ import { z } from "zod";
 
 const schema = z.object({
   itemId:     z.string(),           // id do ChecklistItemOS
-  status:     z.enum(["PENDENTE","OK","NAO_APLICAVEL","REQUER_ATENCAO"]),
+  status:     z.enum(["PENDENTE","CONFORME","NAO_APLICAVEL","NAO_CONFORME", "CONFORME_COM_RESSALVAS"]),
   observacao: z.string().optional(),
 });
 

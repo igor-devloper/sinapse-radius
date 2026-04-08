@@ -27,7 +27,10 @@ export async function GET(
       },
       anexos: { orderBy: { createdAt: "asc" } },
       checklistItems: {
-        include: { asset: { select: { nome: true, codigo: true, fotoUrl: true } } },
+        include: {
+          asset: { select: { nome: true, codigo: true, fotoUrl: true } },
+          anexos: { orderBy: { createdAt: "asc" } },
+        },
         orderBy: [{ subsistema: "asc" }, { itemId: "asc" }],
       },
     },
@@ -121,6 +124,18 @@ export async function GET(
       assetNome: item.asset?.nome ?? null,
       assetCodigo: item.asset?.codigo ?? null,
       assetFotoUrl: item.asset?.fotoUrl ?? null,
+      // Fotos vinculadas especificamente a este item
+      fotos: (item as any).anexos
+        ? (item as any).anexos
+            .filter((a: { tipo: string }) => a.tipo.startsWith("image/"))
+            .map((a: { id: string; nome: string; url: string; tipo: string; tamanho: number }) => ({
+              id: a.id,
+              nome: a.nome,
+              url: a.url,
+              tipo: a.tipo,
+              tamanho: a.tamanho,
+            }))
+        : [],
     })),
 
     // ── Comentários ────────────────────────────────────────────────────

@@ -64,6 +64,21 @@ export async function uploadAnexoOS(args: {
   });
 }
 
+export async function uploadAnexoChecklist(args: {
+  osId: string;
+  itemId: string;
+  file: Buffer;
+  filename: string;
+  contentType: string;
+}): Promise<{ src: string; publicUrl: string; path: string }> {
+  return uploadArquivoSupabase({
+    folder: `os/${args.osId}/checklist/${args.itemId}`,
+    file: args.file,
+    filename: args.filename,
+    contentType: args.contentType,
+  });
+}
+
 export async function uploadFotoAsset(args: {
   assetId: string;
   file: Buffer;

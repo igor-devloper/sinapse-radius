@@ -374,13 +374,11 @@ function ChecklistItemList({
   canEdit,
   osId,
   onItemsChange,
-  onOpenAtivos,
 }: {
   items: ChecklistItem[];
   canEdit: boolean;
   osId: string;
   onItemsChange: (updatedItem: ChecklistItem) => void;
-  onOpenAtivos: () => void;
 }) {
   const [expanded, setExpanded] = useState<string | null>(null);
   const [saving, setSaving] = useState<string | null>(null);
@@ -581,21 +579,17 @@ function ChecklistItemList({
                           </button>
                         )}
 
-                        {/* Badge de ativos — clicável, abre DialogAtivos com TODOS os ativos do checklist */}
+                        {/* Badges dos ativos vinculados APENAS a este item */}
                         {temAtivos && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onOpenAtivos();
-                            }}
-                            className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium text-violet-700 bg-violet-50 hover:bg-violet-100 transition-colors border border-violet-200 cursor-pointer"
-                          >
-                            <Package2 className="w-3 h-3" />
-                            {itemAssets.length === 1
-                              ? itemAssets[0].nome
-                              : `${itemAssets.length} ativos`}
-                          </button>
+                          itemAssets.map((asset, idx) => (
+                            <span
+                              key={`${item.id}-asset-${asset.codigo ?? asset.nome ?? idx}`}
+                              className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium text-violet-700 bg-violet-50 border border-violet-200"
+                            >
+                              <Package2 className="w-3 h-3" />
+                              {asset.nome ?? asset.codigo ?? "Ativo"}
+                            </span>
+                          ))
                         )}
                       </div>
                     </div>
@@ -886,7 +880,6 @@ export function ChecklistPreventiva({
             canEdit={canEdit}
             osId={osId}
             onItemsChange={handleItemUpdate}
-            onOpenAtivos={() => setDialogAtivosOpen(true)}
           />
         ) : (
           <div className="px-5 py-10 text-center text-sm text-gray-400">

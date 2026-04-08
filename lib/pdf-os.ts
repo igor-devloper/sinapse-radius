@@ -405,7 +405,7 @@ export async function generateOSPDF(data: OSReportData) {
   const MARGIN = 13
 
   const [radiusLogoResult, creativaLogoResult, aiSummary] = await Promise.all([
-    loadSvgAsPng("/logo.png"),
+    loadSvgAsPng("/logo-radius.svg"),
     loadSvgAsPng("/logo-criativa.svg"),
     generateConsolidatedSummary(data),
   ])
@@ -498,11 +498,7 @@ export async function generateOSPDF(data: OSReportData) {
   doc.rect(0, 3, W, H - 3, "F")
 
   const logoY = 52
-  if (criativaPng) {
-    const lH = 30
-    const lW = lH * criativaAspect
-    doc.addImage(criativaPng, "PNG", (W - lW) / 2, logoY, lW, lH, undefined, "FAST")
-  } else if (radiusPng) {
+  if (radiusPng) {
     const lH = 22
     const lW = lH * radiusAspect
     doc.addImage(radiusPng, "PNG", (W - lW) / 2, logoY + 4, lW, lH, undefined, "FAST")
@@ -537,10 +533,10 @@ export async function generateOSPDF(data: OSReportData) {
   doc.setLineWidth(0.4)
   doc.line(MARGIN, H - 24, W - MARGIN, H - 24)
 
-  if (criativaPng) {
+  if (radiusPng) {
     const fH = 5.5
     const fW = fH * criativaAspect
-    doc.addImage(criativaPng, "PNG", MARGIN, H - 19, fW, fH, undefined, "FAST")
+    doc.addImage(radiusPng, "PNG", MARGIN, H - 19, fW, fH, undefined, "FAST")
     doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.muted)
     doc.text("Relatório gerado por Sinapse Criativa", MARGIN + fW + 2, H - 15.5)

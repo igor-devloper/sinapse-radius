@@ -53,7 +53,7 @@ function normalizeSN(value: string) {
 
 function isValidMinerSN(value: string) {
   const sn = normalizeSN(value);
-  return /^[A-Z0-9]{10,30}$/.test(sn);
+  return /^[A-Z0-9]{8,40}$/.test(sn);
 }
 
 export default function MinersPageClient({
@@ -78,7 +78,6 @@ export default function MinersPageClient({
 
   const [showScanner, setShowScanner] = useState(false);
 
-  // Import state
   const [showImport, setShowImport] = useState(false);
   const [importAssetId, setImportAssetId] = useState(asicAssets[0]?.id ?? "");
   const [importContainerId, setImportContainerId] = useState("");
@@ -89,7 +88,6 @@ export default function MinersPageClient({
     skipped: number;
   } | null>(null);
 
-  // Single add state
   const [showAddSingle, setShowAddSingle] = useState(false);
   const [singleSN, setSingleSN] = useState("");
   const [singleAssetId, setSingleAssetId] = useState(asicAssets[0]?.id ?? "");
@@ -104,12 +102,13 @@ export default function MinersPageClient({
     const params = new URLSearchParams();
     params.set("page", String(p));
     params.set("limit", String(LIMIT));
+
     if (search.trim()) params.set("q", search.trim());
     if (filterStatus !== "all") params.set("status", filterStatus);
     if (filterAsset !== "all") params.set("assetId", filterAsset);
 
     try {
-      const res = await fetch(`/api/miners?${params}`);
+      const res = await fetch(`/api/miners?${params.toString()}`);
       const data = await res.json();
 
       setMiners(reset ? data.miners : (prev) => [...prev, ...data.miners]);
@@ -229,7 +228,6 @@ export default function MinersPageClient({
 
   return (
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-8">
-      {/* Header */}
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-3">
@@ -251,20 +249,21 @@ export default function MinersPageClient({
               onClick={() => setShowAddSingle((s) => !s)}
               className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-300"
             >
-              <Plus className="h-4 w-4" /> Adicionar
+              <Plus className="h-4 w-4" />
+              Adicionar
             </button>
 
             <button
               onClick={() => setShowImport((s) => !s)}
               className="flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700"
             >
-              <Upload className="h-4 w-4" /> Importar em massa
+              <Upload className="h-4 w-4" />
+              Importar em massa
             </button>
           </div>
         )}
       </div>
 
-      {/* Add single form */}
       {showAddSingle && canEdit && (
         <div className="space-y-4 rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
           <p className="text-sm font-semibold text-gray-800">
@@ -367,13 +366,14 @@ export default function MinersPageClient({
         </div>
       )}
 
-      {/* Bulk import */}
       {showImport && canEdit && (
         <div className="space-y-4 rounded-2xl border border-violet-200 bg-violet-50 p-5">
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-2 text-sm font-semibold text-violet-800">
-              <Upload className="h-4 w-4" /> Importação em Massa de Miners
+              <Upload className="h-4 w-4" />
+              Importação em Massa de Miners
             </p>
+
             <button
               onClick={() => setShowImport(false)}
               className="text-xs text-violet-400 hover:underline"
@@ -384,9 +384,7 @@ export default function MinersPageClient({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="space-y-1.5">
-              <label className="text-xs font-medium text-violet-800">
-                Modelo ASIC *
-              </label>
+              <label className="text-xs font-medium text-violet-800">Modelo ASIC *</label>
               <select
                 value={importAssetId}
                 onChange={(e) => setImportAssetId(e.target.value)}
@@ -461,7 +459,6 @@ export default function MinersPageClient({
         </div>
       )}
 
-      {/* Filters + Search */}
       <div className="flex flex-col gap-2 sm:flex-row">
         <div className="relative flex-1">
           <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
@@ -510,7 +507,6 @@ export default function MinersPageClient({
         </button>
       </div>
 
-      {/* List */}
       {!fetched ? (
         <div className="rounded-2xl border border-dashed border-gray-200 p-12 text-center">
           <Cpu className="mx-auto mb-3 h-10 w-10 text-gray-300" />
@@ -553,9 +549,7 @@ export default function MinersPageClient({
                   {m.asset?.nome ?? "—"}
                 </p>
 
-                <Badge
-                  className={cn("w-fit border text-[10px]", STATUS_COLOR[m.status])}
-                >
+                <Badge className={cn("w-fit border text-[10px]", STATUS_COLOR[m.status])}>
                   {STATUS_LABEL[m.status]}
                 </Badge>
 

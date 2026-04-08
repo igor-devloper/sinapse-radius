@@ -318,7 +318,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
             </Card>
           )}
 
-          <AnexosOS osId={os.id} anexos={os.anexos} canUpload={canEdit && !isConcluida} />
+
           <ConclusaoRelatorio osId={os.id} initialTexto={conclusaoManual} canEdit={canEdit} />
           <ComentariosOS osId={os.id} comentarios={comentariosVisiveis} />
         </div>

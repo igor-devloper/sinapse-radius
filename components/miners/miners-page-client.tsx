@@ -1,19 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Cpu,
   Upload,
   Search,
   Plus,
-  RotateCw,
   CheckCircle2,
   Trash2,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import BarcodeScanner from "./barcode-scanner";
+import { toast } from "sonner";
 
 interface AsicAsset {
   id: string;
@@ -76,8 +75,6 @@ export default function MinersPageClient({
   const [loading, setLoading] = useState(false);
   const [fetched, setFetched] = useState(false);
 
-  const [showScanner, setShowScanner] = useState(false);
-
   const [showImport, setShowImport] = useState(false);
   const [importAssetId, setImportAssetId] = useState(asicAssets[0]?.id ?? "");
   const [importContainerId, setImportContainerId] = useState("");
@@ -96,7 +93,7 @@ export default function MinersPageClient({
 
   const LIMIT = 100;
 
-  async function fetchMiners(p = 1, reset = false) {
+  const fetchMiners = useCallback(async (p = 1, reset = false) => {
     setLoading(true);
 
     const params = new URLSearchParams();
@@ -120,7 +117,11 @@ export default function MinersPageClient({
     } finally {
       setLoading(false);
     }
-  }
+  }, [filterAsset, filterStatus, search]);
+
+  useEffect(() => {
+    void fetchMiners(1, true);
+  }, [fetchMiners]);
 
   async function handleImport() {
     if (!importAssetId || !importText.trim()) return;
@@ -155,9 +156,7 @@ export default function MinersPageClient({
       });
 
       setImportText("");
-      setTotalDB((t) => t + (data.created ?? 0));
-      setFetched(false);
-      setMiners([]);
+      await fetchMiners(1, true);
     } catch (error) {
       console.error("Erro ao importar miners:", error);
     } finally {
@@ -186,19 +185,18 @@ export default function MinersPageClient({
 
       if (!res.ok) {
         const data = await res.json().catch(() => null);
-        alert(data?.error ?? "Erro ao adicionar miner.");
+        toast.error(data?.error ?? "Erro ao adicionar miner.");
         return;
       }
 
       setSingleSN("");
       setSingleContainer("");
-      setTotalDB((t) => t + 1);
-      setFetched(false);
-      setMiners([]);
       setShowAddSingle(false);
+      toast.success("Miner criado com sucesso.");
+      await fetchMiners(1, true);
     } catch (error) {
       console.error("Erro ao adicionar miner:", error);
-      alert("Erro ao adicionar miner.");
+      toast.error("Erro ao adicionar miner.");
     } finally {
       setAddingOne(false);
     }
@@ -270,7 +268,7 @@ export default function MinersPageClient({
             Adicionar miner individual
           </p>
 
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-xs font-medium text-gray-600">
                 Serial Number *
@@ -293,15 +291,6 @@ export default function MinersPageClient({
                     : "Formato ainda inválido. Revise a leitura."}
                 </p>
               ) : null}
-            </div>
-
-            <div className="flex items-end">
-              <button
-                onClick={() => setShowScanner(true)}
-                className="flex w-full items-center justify-center gap-2 rounded-xl bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700"
-              >
-                📷 Escanear
-              </button>
             </div>
 
             <div className="space-y-1.5">
@@ -333,19 +322,6 @@ export default function MinersPageClient({
               />
             </div>
           </div>
-
-          {showScanner && (
-            <div className="rounded-2xl border border-green-200 bg-green-50 p-4">
-              <BarcodeScanner
-                onScan={(code) => {
-                  const normalized = normalizeSN(code);
-                  setSingleSN(normalized);
-                  setShowScanner(false);
-                }}
-                onClose={() => setShowScanner(false)}
-              />
-            </div>
-          )}
 
           <div className="flex gap-2">
             <button
@@ -497,14 +473,6 @@ export default function MinersPageClient({
           </select>
         )}
 
-        <button
-          onClick={() => fetchMiners(1, true)}
-          disabled={loading}
-          className="flex h-10 items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 text-sm font-medium text-gray-700 hover:border-gray-300 disabled:opacity-50"
-        >
-          <RotateCw className={cn("h-4 w-4", loading && "animate-spin")} />
-          {fetched ? "Atualizar" : "Carregar"}
-        </button>
       </div>
 
       {!fetched ? (
@@ -514,7 +482,7 @@ export default function MinersPageClient({
             {totalDB.toLocaleString("pt-BR")} miners registrados
           </p>
           <p className="mt-1 text-xs text-gray-400">
-            Clique em "Carregar" para listar.
+            A listagem é atualizada automaticamente.
           </p>
         </div>
       ) : miners.length === 0 ? (

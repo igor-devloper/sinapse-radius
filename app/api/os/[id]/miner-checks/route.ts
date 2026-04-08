@@ -5,6 +5,17 @@ import { z } from "zod";
 
 const db = prisma as any;
 
+function normalizeContainerId(value?: string | null) {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "")
+    .replace(/_/g, "-")
+    .split("-")
+    .map((segment) => (/^\d+$/.test(segment) ? String(Number(segment)) : segment))
+    .join("-");
+}
+
 /**
  * GET /api/os/[id]/miner-checks
  *
@@ -20,7 +31,14 @@ export async function GET(
 
   const { id: osId } = await params;
 
-  const checks = await db.minerCheckOS.findMany({
+  const os = await db.ordemServico.findUnique({
+    where: { id: osId },
+    select: { id: true, containerId: true },
+  });
+
+  if (!os) return NextResponse.json({ error: "OS não encontrada" }, { status: 404 });
+
+  let checks = await db.minerCheckOS.findMany({
     where: { osId },
     include: {
       minerInstance: {
@@ -32,6 +50,53 @@ export async function GET(
       { minerInstance: { serialNumber: "asc" } },
     ],
   });
+
+  // Auto-reparo: OS antigas podem não ter os registros em miner_checks_os.
+  // Se não houver checks, semeia a partir dos miners ativos e retorna já preenchido.
+  if (checks.length === 0) {
+    const miners = await db.minerInstance.findMany({
+      where: {
+        status: "ativo",
+        ...(os.containerId
+          ? { containerId: { not: null } }
+          : { asset: { isAsicModel: true } }),
+      },
+      select: { id: true, containerId: true },
+    });
+
+    const eligibleMinerIds = os.containerId
+      ? miners
+          .filter(
+            (m: { containerId: string | null }) =>
+              normalizeContainerId(m.containerId) === normalizeContainerId(os.containerId)
+          )
+          .map((m: { id: string }) => m.id)
+      : miners.map((m: { id: string }) => m.id);
+
+    if (eligibleMinerIds.length > 0) {
+      await db.minerCheckOS.createMany({
+        data: eligibleMinerIds.map((minerInstanceId: string) => ({
+          osId,
+          minerInstanceId,
+          status: "FUNCIONANDO",
+        })),
+        skipDuplicates: true,
+      });
+
+      checks = await db.minerCheckOS.findMany({
+        where: { osId },
+        include: {
+          minerInstance: {
+            select: { id: true, serialNumber: true, containerId: true, status: true, assetId: true },
+          },
+        },
+        orderBy: [
+          { minerInstance: { containerId: "asc" } },
+          { minerInstance: { serialNumber: "asc" } },
+        ],
+      });
+    }
+  }
 
   return NextResponse.json({ checks });
 }

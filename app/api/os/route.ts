@@ -68,18 +68,37 @@ const criarOSSchema = z.discriminatedUnion("tipoOS", [
  */
 async function buscarMinerInstancesParaOS(containerId?: string): Promise<string[]> {
   try {
-    const where: Record<string, unknown> = { status: "ativo" };
+    const normalizeContainerId = (value?: string | null) =>
+      String(value ?? "")
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, "")
+        .replace(/_/g, "-")
+        .split("-")
+        .map((segment) => (/^\d+$/.test(segment) ? String(Number(segment)) : segment))
+        .join("-");
 
     if (containerId) {
-      // Filtra pelos miners do container específico
-      where.containerId = containerId;
-    } else {
-      // Sem container: busca miners vinculados a assets do tipo ASIC
-      where.asset = { isAsicModel: true };
+      const target = normalizeContainerId(containerId);
+      const miners = await db.minerInstance.findMany({
+        where: {
+          status: "ativo",
+          containerId: { not: null },
+        },
+        select: { id: true, containerId: true },
+        orderBy: [{ containerId: "asc" }, { serialNumber: "asc" }],
+      });
+
+      return miners
+        .filter((m: { containerId: string | null }) => normalizeContainerId(m.containerId) === target)
+        .map((m: { id: string }) => m.id);
     }
 
     const miners = await db.minerInstance.findMany({
-      where,
+      where: {
+        status: "ativo",
+        asset: { isAsicModel: true },
+      },
       select: { id: true },
       orderBy: [{ containerId: "asc" }, { serialNumber: "asc" }],
     });

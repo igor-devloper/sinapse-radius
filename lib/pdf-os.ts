@@ -169,8 +169,6 @@ async function loadSvgAsPng(url: string): Promise<{ dataUrl: string; aspect: num
         canvas.width  = img.width  || 600
         canvas.height = img.height || 200
         const ctx = canvas.getContext("2d")!
-        ctx.fillStyle = "#ffffff"
-        ctx.fillRect(0, 0, canvas.width, canvas.height)
         ctx.drawImage(img, 0, 0)
         URL.revokeObjectURL(objUrl)
         resolve(canvas.toDataURL("image/png"))
@@ -605,13 +603,13 @@ export async function generateOSPDF(data: OSReportData) {
     const naoAplicavel = data.checklistItems.filter((i) => i.status === "NAO_APLICAVEL").length
     const pct      = total > 0 ? Math.round(((ok + ressalva) / total) * 100) : 0
 
-    doc.setFontSize(7.2); doc.setFont("helvetica", "normal")
-    doc.setTextColor(...C.muted)
-    doc.text(
-      `Conformes: ${ok}  |  Ressalvas: ${ressalva}  |  Não conformes: ${atencao}  |  N/A: ${naoAplicavel}  |  Pendentes: ${pendente}  |  Conformidade: ${pct}%`,
-      MARGIN,
-      y + 3.5
-    )
+    // doc.setFontSize(7.2); doc.setFont("helvetica", "normal")
+    // doc.setTextColor(...C.muted)
+    // doc.text(
+    //   `Conformes: ${ok}  |  Ressalvas: ${ressalva}  |  Não conformes: ${atencao}  |  N/A: ${naoAplicavel}  |  Pendentes: ${pendente}  |  Conformidade: ${pct}%`,
+    //   MARGIN,
+    //   y + 3.5
+    // )
     y += 8
 
     const grupos: Record<string, typeof data.checklistItems> = {}

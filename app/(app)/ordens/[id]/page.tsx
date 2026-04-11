@@ -13,10 +13,11 @@ import {
 import { AtualizarStatusOS } from "@/components/os/atualizar-status";
 import { ComentariosOS } from "@/components/os/comentarios";
 import { HistoricoTimeline } from "@/components/os/historico-timeline";
-import { AnexosOS } from "@/components/os/anexos-os";
 import { ChecklistPreventiva } from "@/components/os/checklist-preventiva";
+import { TopicosCorretiva } from "@/components/os/topicos-corretiva";
 import { DownloadRelatorioButton } from "@/components/os/download-relatorio-button";
 import { EditarDatasOS } from "@/components/os/editar-datas-os";
+import { EditarDadosBasicosOS } from "@/components/os/editar-dados-basicos-os";
 import { ConclusaoRelatorio } from "@/components/os/conclusao-relatorio";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -24,7 +25,72 @@ import Image from "next/image";
 import { decodeConclusao, isConclusaoComentario } from "@/lib/os-conclusao";
 import { getAllAssetBindingsForChecklistItems } from "@/lib/assets";
 
-const db = prisma as any;
+type OSDetailRecord = {
+  id: string;
+  numero: string;
+  titulo: string;
+  descricao: string;
+  motivoOS: string;
+  tipoOS: "PREVENTIVA" | "CORRETIVA";
+  status: "ABERTA" | "EM_ANDAMENTO" | "AGUARDANDO_PECA" | "PAUSADA" | "CONCLUIDA" | "CANCELADA";
+  prioridade: "CRITICA" | "ALTA" | "MEDIA" | "BAIXA";
+  subsistema: string;
+  componenteTag: string | null;
+  containerId: string | null;
+  tipoAtividadeCorretiva: string | null;
+  periodicidadesSelecionadas: string[];
+  periodicidadePreventiva: string | null;
+  dataEmissaoAxia: Date | null;
+  dataProgramada: Date | null;
+  dataFimProgramada: Date | null;
+  dataInicio: Date | null;
+  dataConclusao: Date | null;
+  createdAt: Date;
+  responsavel: { id: string; nome: string; email: string; cargo: string; avatarUrl: string | null } | null;
+  abertoPor: { id: string; nome: string; email: string };
+  comentarios: Array<{
+    id: string;
+    texto: string;
+    usuario: { id: string; nome: string; avatarUrl: string | null };
+    createdAt: Date;
+  }>;
+  historicoOS: Array<{
+    id: string;
+    statusDe: string | null;
+    statusPara: string;
+    observacao: string | null;
+    createdAt: Date;
+    usuario: { id: string; nome: string };
+  }>;
+  anexos: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number; createdAt: Date }>;
+  topicosCorretiva: Array<{
+    id: string;
+    titulo: string;
+    observacao: string | null;
+    ordem: number;
+    anexos: Array<{ id: string; nome: string; url: string; tipo: string }>;
+  }>;
+  checklistItems: Array<{
+    id: string;
+    itemId: string;
+    descricao: string;
+    periodicidade: string;
+    subsistema: string;
+    referencia: string;
+    status: "PENDENTE" | "CONFORME" | "NAO_APLICAVEL" | "NAO_CONFORME" | "CONFORME_COM_RESSALVAS";
+    observacao: string | null;
+    asset: { id: string; nome: string | null; codigo: string | null; fotoUrl: string | null } | null;
+    anexos: Array<{ id: string; nome: string; url: string; tipo: string }>;
+  }>;
+};
+
+type PrismaDetailClient = typeof prisma & {
+  ordemServico: {
+    findUnique(args: unknown): Promise<OSDetailRecord | null>;
+  };
+};
+
+const db = prisma as PrismaDetailClient;
 
 const prioridadeMap: Record<string, { label: string; class: string; dot: string }> = {
   CRITICA: { label: "Crítica", class: "bg-red-100 text-red-700 border-red-200",         dot: "bg-red-500" },
@@ -49,7 +115,7 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
 
   const osId = (await params).id;
 
-  const os = await prisma.ordemServico.findUnique({
+  const os = await db.ordemServico.findUnique({
     where: { id: osId },
     include: {
       responsavel: { select: { id: true, nome: true, email: true, cargo: true, avatarUrl: true } },
@@ -63,6 +129,10 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
         orderBy: { createdAt: "asc" },
       },
       anexos: { orderBy: { createdAt: "asc" } },
+      topicosCorretiva: {
+        include: { anexos: { orderBy: { createdAt: "asc" } } },
+        orderBy: [{ ordem: "asc" }, { createdAt: "asc" }],
+      },
       checklistItems: {
         include: {
           asset: { select: { id: true, nome: true, codigo: true, fotoUrl: true } },
@@ -83,14 +153,14 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
   //
   // Isso elimina a dependência da periodicidade "MENSAL" e garante que
   // qualquer OS (preventiva ou corretiva) com miners seja detectada corretamente.
-  const minerCheckCount = await db.minerCheckOS.count({ where: { osId: os.id } });
+  const minerCheckCount = await prisma.minerCheckOS.count({ where: { osId: os.id } });
   const hasMinerChecklist = minerCheckCount > 0;
 
   // Busca o assetId do modelo ASIC principal para passar ao componente
   // (usado apenas como referência visual — o carregamento real vem dos checks)
   let asicAssetId: string | null = null;
   if (hasMinerChecklist) {
-    const firstCheck = await db.minerCheckOS.findFirst({
+    const firstCheck = await prisma.minerCheckOS.findFirst({
       where: { osId: os.id },
       select: { minerInstance: { select: { assetId: true } } },
     });
@@ -152,6 +222,21 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
       })),
     };
   });
+
+  const topicosCorretiva = os.topicosCorretiva.map((topico) => ({
+    id: topico.id,
+    titulo: topico.titulo,
+    observacao: topico.observacao,
+    ordem: topico.ordem,
+    fotos: (topico.anexos ?? [])
+      .filter((a) => String(a.tipo || "").startsWith("image/"))
+      .map((a) => ({
+        id: String(a.id),
+        nome: String(a.nome),
+        url: String(a.url),
+        tipo: String(a.tipo),
+      })),
+  }));
 
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-10">
@@ -319,6 +404,10 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
           )}
 
 
+          {!isPreventiva && (
+            <TopicosCorretiva osId={os.id} canEdit={canEdit && !isConcluida} topicos={topicosCorretiva} />
+          )}
+
           <ConclusaoRelatorio osId={os.id} initialTexto={conclusaoManual} canEdit={canEdit} />
           <ComentariosOS osId={os.id} comentarios={comentariosVisiveis} />
         </div>
@@ -378,6 +467,14 @@ export default async function OSDetailPage({ params }: { params: Promise<{ id: s
                 <InfoRow icon={CheckCircle2} label="Conclusão" value={os.dataConclusao ? formatarDataBR(os.dataConclusao) : "—"} highlight={!!os.dataConclusao} />
               </CardContent>
             </Card>
+          )}
+
+          {canEdit && (
+            <EditarDadosBasicosOS
+              osId={os.id}
+              subsistema={os.subsistema}
+              componenteTag={os.componenteTag}
+            />
           )}
 
           {/* Equipe */}

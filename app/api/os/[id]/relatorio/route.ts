@@ -4,6 +4,73 @@ import { prisma } from "@/lib/prisma";
 import { calcularSLA } from "@/lib/sla-manual";
 import { decodeConclusao, isConclusaoComentario } from "@/lib/os-conclusao";
 
+type OSRelatorioRecord = {
+  id: string;
+  numero: string;
+  titulo: string;
+  descricao: string;
+  motivoOS: string;
+  tipoOS: "PREVENTIVA" | "CORRETIVA";
+  status: "ABERTA" | "EM_ANDAMENTO" | "AGUARDANDO_PECA" | "PAUSADA" | "CONCLUIDA" | "CANCELADA";
+  prioridade: "CRITICA" | "ALTA" | "MEDIA" | "BAIXA";
+  subsistema: string;
+  componenteTag: string | null;
+  containerId: string | null;
+  tipoAtividadeCorretiva: string | null;
+  dataEmissaoAxia: Date | null;
+  dataLimiteSLA: Date | null;
+  prazoSLAHoras: number | null;
+  slaVencido: boolean;
+  dataProgramada: Date | null;
+  dataInicio: Date | null;
+  dataConclusao: Date | null;
+  createdAt: Date;
+  responsavel: { nome: string; email: string; cargo: string } | null;
+  abertoPor: { nome: string; email: string };
+  comentarios: Array<{
+    texto: string;
+    createdAt: Date;
+    usuario: { nome: string };
+  }>;
+  historicoOS: Array<{
+    statusDe: string | null;
+    statusPara: string;
+    observacao: string | null;
+    createdAt: Date;
+    usuario: { nome: string };
+  }>;
+  anexos: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number }>;
+  topicosCorretiva: Array<{
+    id: string;
+    titulo: string;
+    observacao: string | null;
+    ordem: number;
+    updatedAt: Date;
+    anexos: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number }>;
+  }>;
+  checklistItems: Array<{
+    id: string;
+    itemId: string;
+    descricao: string;
+    periodicidade: string;
+    subsistema: string;
+    referencia: string;
+    status: "PENDENTE" | "CONFORME" | "NAO_APLICAVEL" | "NAO_CONFORME" | "CONFORME_COM_RESSALVAS";
+    observacao: string | null;
+    atualizadoEm: Date | null;
+    asset: { nome: string | null; codigo: string | null; fotoUrl: string | null } | null;
+    anexos: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number }>;
+  }>;
+};
+
+type PrismaRelatorioClient = typeof prisma & {
+  ordemServico: {
+    findUnique(args: unknown): Promise<OSRelatorioRecord | null>;
+  };
+};
+
+const db = prisma as PrismaRelatorioClient;
+
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -13,7 +80,7 @@ export async function GET(
 
   const osId = (await params).id;
 
-  const os = await prisma.ordemServico.findUnique({
+  const os = await db.ordemServico.findUnique({
     where: { id: osId },
     include: {
       responsavel: { select: { nome: true, email: true, cargo: true } },
@@ -27,6 +94,10 @@ export async function GET(
         orderBy: { createdAt: "asc" },
       },
       anexos: { orderBy: { createdAt: "asc" } },
+      topicosCorretiva: {
+        include: { anexos: { orderBy: { createdAt: "asc" } } },
+        orderBy: [{ ordem: "asc" }, { createdAt: "asc" }],
+      },
       checklistItems: {
         include: {
           asset: { select: { nome: true, codigo: true, fotoUrl: true } },
@@ -59,6 +130,55 @@ export async function GET(
     os.tipoOS === "PREVENTIVA"
       ? "MANUTENCAO_PREVENTIVA_GERAL"
       : (os.tipoAtividadeCorretiva ?? "OUTRO");
+
+  const checklistItemsParaPDF =
+    os.tipoOS === "CORRETIVA"
+      ? os.topicosCorretiva.map((topico, index) => ({
+          id: topico.id,
+          itemId: `TOP-${String(index + 1).padStart(2, "0")}`,
+          descricao: topico.titulo,
+          periodicidade: `Tópico ${index + 1}`,
+          subsistema: os.subsistema,
+          referencia: "Manutenção corretiva",
+          status: "CONFORME" as const,
+          observacao: topico.observacao,
+          atualizadoEm: topico.updatedAt?.toISOString?.() ?? null,
+          assetNome: null,
+          assetCodigo: null,
+          assetFotoUrl: null,
+          fotos: topico.anexos
+            .filter((a) => a.tipo.startsWith("image/"))
+            .map((a) => ({
+              id: a.id,
+              nome: a.nome,
+              url: a.url,
+              tipo: a.tipo,
+              tamanho: a.tamanho,
+            })),
+        }))
+      : os.checklistItems.map((item) => ({
+          id:           item.id,
+          itemId:       item.itemId,
+          descricao:    item.descricao,
+          periodicidade: item.periodicidade,
+          subsistema:   item.subsistema,
+          referencia: item.referencia,
+          status: item.status,
+          observacao: item.observacao,
+          atualizadoEm: item.atualizadoEm?.toISOString() ?? null,
+          assetNome: item.asset?.nome ?? null,
+          assetCodigo: item.asset?.codigo ?? null,
+          assetFotoUrl: item.asset?.fotoUrl ?? null,
+          fotos: item.anexos
+            .filter((a) => a.tipo.startsWith("image/"))
+            .map((a) => ({
+              id: a.id,
+              nome: a.nome,
+              url: a.url,
+              tipo: a.tipo,
+              tamanho: a.tamanho,
+            })),
+        }));
 
   const payload = {
     id: os.id,
@@ -114,34 +234,24 @@ export async function GET(
       const c = [...os.comentarios].reverse().find((x) => isConclusaoComentario(x.texto));
       return c ? decodeConclusao(c.texto) : null;
     })(),
+    topicosCorretiva: os.topicosCorretiva.map((topico) => ({
+      id: topico.id,
+      titulo: topico.titulo,
+      observacao: topico.observacao,
+      ordem: topico.ordem,
+      fotos: topico.anexos
+        .filter((a) => a.tipo.startsWith("image/"))
+        .map((a) => ({
+          id: a.id,
+          nome: a.nome,
+          url: a.url,
+          tipo: a.tipo,
+          tamanho: a.tamanho,
+        })),
+    })),
 
     // ── Checklist ──────────────────────────────────────────────────────
-    checklistItems: os.checklistItems.map((item) => ({
-      id:           item.id,
-      itemId:       item.itemId,
-      descricao:    item.descricao,
-      periodicidade: item.periodicidade,
-      subsistema:   item.subsistema,
-      referencia: item.referencia,
-      status: item.status,
-      observacao: item.observacao,
-      atualizadoEm: item.atualizadoEm?.toISOString() ?? null,
-      assetNome: item.asset?.nome ?? null,
-      assetCodigo: item.asset?.codigo ?? null,
-      assetFotoUrl: item.asset?.fotoUrl ?? null,
-      // Fotos vinculadas especificamente a este item
-      fotos: (item as any).anexos
-        ? (item as any).anexos
-            .filter((a: { tipo: string }) => a.tipo.startsWith("image/"))
-            .map((a: { id: string; nome: string; url: string; tipo: string; tamanho: number }) => ({
-              id: a.id,
-              nome: a.nome,
-              url: a.url,
-              tipo: a.tipo,
-              tamanho: a.tamanho,
-            }))
-        : [],
-    })),
+    checklistItems: checklistItemsParaPDF,
 
     // ── Comentários ────────────────────────────────────────────────────
     comentarios: os.comentarios

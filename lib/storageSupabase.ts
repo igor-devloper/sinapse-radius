@@ -79,6 +79,21 @@ export async function uploadAnexoChecklist(args: {
   });
 }
 
+export async function uploadAnexoTopicoCorretiva(args: {
+  osId: string;
+  topicoId: string;
+  file: Buffer;
+  filename: string;
+  contentType: string;
+}): Promise<{ src: string; publicUrl: string; path: string }> {
+  return uploadArquivoSupabase({
+    folder: `os/${args.osId}/topicos-corretiva/${args.topicoId}`,
+    file: args.file,
+    filename: args.filename,
+    contentType: args.contentType,
+  });
+}
+
 export async function uploadFotoAsset(args: {
   assetId: string;
   file: Buffer;

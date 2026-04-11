@@ -137,15 +137,17 @@ model OrdemServico {
   abertoPorId   String
   abertoPor     Usuario  @relation("AbertoPor", fields: [abertoPorId], references: [id])
 
-  comentarios     Comentario[]
-  historicoOS     HistoricoOS[]
-  anexos          Anexo[]
-  anexosChecklist AnexoChecklist[]
-  checklistItems  ChecklistItemOS[]
-  minerChecks     MinerCheckOS[] // checks de miners associados a esta OS
+  comentarios      Comentario[]
+  historicoOS      HistoricoOS[]
+  anexos           Anexo[]
+  anexosChecklist  AnexoChecklist[]
+  checklistItems   ChecklistItemOS[]
+  minerChecks      MinerCheckOS[] // checks de miners associados a esta OS
+  topicosCorretiva TopicoCorretivaOS[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  anexoTopicoCorretivas AnexoTopicoCorretiva[]
 
   @@map("ordens_servico")
 }
@@ -265,6 +267,38 @@ model AnexoChecklist {
   @@index([checklistItemId])
   @@index([osId])
   @@map("anexos_checklist")
+}
+
+model TopicoCorretivaOS {
+  id         String                 @id @default(cuid())
+  osId       String
+  os         OrdemServico           @relation(fields: [osId], references: [id], onDelete: Cascade)
+  titulo     String
+  observacao String?
+  ordem      Int                    @default(0)
+  anexos     AnexoTopicoCorretiva[]
+  createdAt  DateTime               @default(now())
+  updatedAt  DateTime               @updatedAt
+
+  @@index([osId, ordem])
+  @@map("topicos_corretiva_os")
+}
+
+model AnexoTopicoCorretiva {
+  id        String            @id @default(cuid())
+  topicoId  String
+  topico    TopicoCorretivaOS @relation(fields: [topicoId], references: [id], onDelete: Cascade)
+  osId      String
+  os        OrdemServico      @relation(fields: [osId], references: [id], onDelete: Cascade)
+  nome      String
+  url       String
+  tipo      String
+  tamanho   Int
+  createdAt DateTime          @default(now())
+
+  @@index([topicoId])
+  @@index([osId])
+  @@map("anexos_topicos_corretiva_os")
 }
 
 model HistoricoOS {

@@ -25,9 +25,9 @@ export default function Sidebar({ cargo }: { cargo: string }) {
   const visibleItems = navItems.filter((item) => item.cargos.includes(cargo));
 
   return (
-    <aside className="w-60 h-full bg-white border-r border-gray-100 flex flex-col shrink-0">
+    <aside className="w-60 h-full flex flex-col shrink-0">
       {/* Logo */}
-      <div className="h-16 flex items-center px-6 border-b border-gray-100">
+      <div className="h-16 flex items-center px-6 border-b">
         {/* <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 rounded-full bg-violet-600 flex items-center justify-center">
             <span className="text-white text-xs font-bold">RS</span>
@@ -38,7 +38,7 @@ export default function Sidebar({ cargo }: { cargo: string }) {
           </div>
         </div> */}
 
-        <Image src="/logo-radius.svg" alt="logo" width={300} height={300}/>
+        <Image src="/logo-radius-bco.png" alt="logo" width={300} height={300}/>
       </div>
 
       {/* Navegação */}

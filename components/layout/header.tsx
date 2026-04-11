@@ -8,6 +8,13 @@ interface Usuario {
   cargo: string;
 }
 
+function getSaudacao() {
+  const hora = new Date().getHours();
+  if (hora < 12) return "Bom dia";
+  if (hora < 18) return "Boa tarde";
+  return "Boa noite";
+}
+
 export default async function Header({ usuario }: { usuario: Usuario }) {
   // OS ativas com SLA em estado crítico (≥ 90% do prazo decorrido ou vencido)
   const osAtivas = await prisma.ordemServico.findMany({
@@ -18,6 +25,7 @@ export default async function Header({ usuario }: { usuario: Usuario }) {
     const sla = calcularSLA(os.dataEmissaoAxia ?? new Date(), os.tipoOS);
     return sla.vencido || sla.statusColor === "red" || sla.statusColor === "orange";
   }).length;
+  const saudacao = getSaudacao();
 
   return (
     <header className="h-16 bg-white border-b border-gray-100 flex items-center justify-between px-6 shrink-0">
@@ -32,6 +40,7 @@ export default async function Header({ usuario }: { usuario: Usuario }) {
           </div>
         )}
         <div className="text-right hidden md:block">
+          <p className="text-[11px] font-medium text-gray-400 leading-none mb-1">{saudacao},</p>
           <p className="text-sm font-medium text-gray-900">{usuario.nome}</p>
           <p className="text-xs text-gray-400 capitalize">{usuario.cargo.toLowerCase()}</p>
         </div>

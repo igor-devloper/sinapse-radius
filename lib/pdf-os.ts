@@ -10,6 +10,10 @@ type Color = [number, number, number]
 const C = {
   orange:      [234, 88,  12]  as Color,
   orangeLight: [251, 146, 60]  as Color,
+  navy:        [35, 32, 92]    as Color,
+  navySoft:    [48, 57, 120]   as Color,
+  navyMuted:   [92, 109, 165]  as Color,
+  bluePale:    [236, 241, 252] as Color,
   charcoal:    [28,  28,  28]  as Color,
   dark:        [51,  51,  51]  as Color,
   slate:       [80,  90, 105]  as Color,
@@ -61,6 +65,13 @@ export type OSReportData = {
   responsavel?: { nome: string; cargo: string } | null
   abertoPor: { nome: string }
   conclusaoManual?: string | null
+  topicosCorretiva?: Array<{
+    id: string
+    titulo: string
+    observacao?: string | null
+    ordem: number
+    fotos?: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number }>
+  }>
   checklistItems: Array<{
     itemId: string
     descricao: string
@@ -135,6 +146,14 @@ const FISCAL_FIXO_CARGO = "Engenheiro da AXIA";
 
 function buildIntroducao(data: OSReportData, tipoVisita: string) {
   const dataConclusao = fmtDate(data.dataConclusao)
+  if (data.sla.isCorretiva) {
+    return [
+      `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de manutenção corretiva, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
+      `A atuação teve foco no subsistema ${data.subsistema}, contemplando diagnóstico da falha, execução das intervenções corretivas previstas no escopo e registro das evidências de campo no presente relatório.`,
+      `A manutenção ${dataConclusao !== "—" ? `foi concluída em ${dataConclusao}` : "permaneceu em execução até o fechamento deste relatório"}, em conformidade com o escopo técnico definido para esta ordem de serviço.`,
+    ]
+  }
+
   return [
     `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
     `A visita teve foco no subsistema ${data.subsistema}, com verificação dos itens planejados, registro das evidências de campo e consolidação dos resultados no presente relatório.`,
@@ -144,6 +163,14 @@ function buildIntroducao(data: OSReportData, tipoVisita: string) {
 
 function buildObrigacoesExecutante(data: OSReportData) {
   const totalChecklist = data.checklistItems.length
+  if (data.sla.isCorretiva) {
+    return [
+      "Executar as intervenções corretivas aplicáveis com rastreabilidade por atividade registrada.",
+      "Registrar evidências fotográficas e observações técnicas de forma objetiva e auditável.",
+      "Descrever cada tópico executado com título, observação de campo e documentação visual compatível com o escopo atendido.",
+      `Consolidar os resultados da visita, incluindo ${totalChecklist} tópicos técnicos registrados nesta OS, para validação do fiscal responsável.`,
+    ]
+  }
   return [
     "Executar o checklist preventivo/corretivo aplicável com rastreabilidade por item inspecionado.",
     "Registrar evidências fotográficas e observações técnicas de forma objetiva e auditável.",
@@ -184,6 +211,21 @@ async function loadSvgAsPng(url: string): Promise<{ dataUrl: string; aspect: num
       img.src = dataUrl
     })
 
+    return { dataUrl, aspect }
+  } catch {
+    return null
+  }
+}
+
+async function loadImageAsDataUrl(url: string): Promise<{ dataUrl: string; aspect: number } | null> {
+  try {
+    const dataUrl = await urlToDataURL(url)
+    const aspect = await new Promise<number>((resolve) => {
+      const img = new Image()
+      img.onload = () => resolve(img.width && img.height ? img.width / img.height : 3)
+      img.onerror = () => resolve(3)
+      img.src = dataUrl
+    })
     return { dataUrl, aspect }
   } catch {
     return null
@@ -339,8 +381,8 @@ Responsável técnico: ${data.responsavel?.nome ?? "não informado"}
 Descrição técnica: ${data.descricao}
 Motivo / causa raiz: ${data.motivoOS}
 
-=== CHECKLIST ===
-Total de itens inspecionados: ${totalChecklist}
+=== EXECUÇÃO ===
+Quantidade de registros técnicos: ${totalChecklist}
 Itens conformes: ${okItems}
 Itens com ressalvas: ${ressalvaItems}
 Itens não conformes: ${atencaoItems}
@@ -386,6 +428,12 @@ Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
     const clean = text.replace(/```json|```/g, "").trim()
     return JSON.parse(clean)
   } catch {
+    if (data.sla.isCorretiva) {
+      return {
+        impactoOperacional:
+          `A manutenção corretiva executada atuou diretamente sobre a falha registrada no subsistema ${data.subsistema}, com foco em restabelecer a condição operacional do sistema e reduzir o risco de recorrência da anomalia observada. As intervenções registradas nesta OS contribuíram para recompor a confiabilidade do conjunto atendido e suportar a continuidade da operação sob os critérios técnicos aplicáveis.\n\nPermanece como recomendação o acompanhamento do comportamento do equipamento após a intervenção, com atenção a alarmes, desvios de processo e eventuais evidências de reincidência, de modo a assegurar estabilidade operacional e resposta tempestiva caso novos sintomas sejam identificados.`,
+      }
+    }
     return {
       impactoOperacional:
         `A manutenção executada contribui diretamente para a continuidade operacional e eficiência do container de mineração, reduzindo o risco de falhas não programadas e preservando a disponibilidade do sistema. As ações corretivas e preventivas realizadas garantem conformidade com os padrões técnicos estabelecidos contratualmente.`,
@@ -403,7 +451,7 @@ export async function generateOSPDF(data: OSReportData) {
   const MARGIN = 13
 
   const [radiusLogoResult, creativaLogoResult, aiSummary] = await Promise.all([
-    loadSvgAsPng("/logo-radius.svg"),
+    loadImageAsDataUrl("/logo-radius-bco.png"),
     loadSvgAsPng("/logo-criativa.svg"),
     generateConsolidatedSummary(data),
   ])
@@ -423,12 +471,10 @@ export async function generateOSPDF(data: OSReportData) {
 
   function drawHeader(pageTitle: string) {
     void pageTitle
-    doc.setFillColor(...C.white)
+    doc.setFillColor(...C.navy)
     doc.rect(0, 0, W, 20, "F")
-    doc.setFillColor(...C.border)
-    doc.rect(0, 0, W, 1, "F")
-    doc.setFillColor(...C.border)
-    doc.rect(0, 20, W, 0.3, "F")
+    doc.setFillColor(...C.navySoft)
+    doc.rect(0, 20, W, 0.6, "F")
 
     if (radiusPng) {
       const lH = 11
@@ -436,12 +482,12 @@ export async function generateOSPDF(data: OSReportData) {
       doc.addImage(radiusPng, "PNG", MARGIN, 4.5, lW, lH, undefined, "FAST")
     } else {
       doc.setFontSize(10); doc.setFont("helvetica", "bold")
-      doc.setTextColor(...C.charcoal)
+      doc.setTextColor(...C.white)
       doc.text("RADIUS MINING", MARGIN, 13)
     }
 
     doc.setFontSize(7); doc.setFont("helvetica", "normal")
-    doc.setTextColor(...C.muted)
+    doc.setTextColor(...C.white)
     doc.text(data.numero, W - MARGIN, 16, { align: "right" })
   }
 
@@ -475,10 +521,10 @@ export async function generateOSPDF(data: OSReportData) {
 
   function sectionBar(y: number, title: string): number {
     doc.setFontSize(9); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.corporate)
+    doc.setTextColor(...C.navy)
     doc.text(title.toUpperCase(), MARGIN, y + 5.2)
-    doc.setDrawColor(...C.border)
-    doc.setLineWidth(0.3)
+    doc.setDrawColor(...C.navyMuted)
+    doc.setLineWidth(0.5)
     doc.line(MARGIN, y + 7.5, W - MARGIN, y + 7.5)
     return y + 12
   }
@@ -489,70 +535,47 @@ export async function generateOSPDF(data: OSReportData) {
   doc.setFillColor(...C.white)
   doc.rect(0, 0, W, H, "F")
 
-  doc.setFillColor(...C.border)
-  doc.rect(0, 0, W, 3, "F")
-
-  doc.setFillColor(244, 244, 245)
-  doc.rect(0, 3, W, H - 3, "F")
-
-  const logoY = 52
+  const logoY = 44
   if (radiusPng) {
-    const lH = 22
+    doc.setFillColor(...C.navy)
+    doc.roundedRect(58, logoY - 2, W - 116, 24, 5, 5, "F")
+    const lH = 13
     const lW = lH * radiusAspect
-    doc.addImage(radiusPng, "PNG", (W - lW) / 2, logoY + 4, lW, lH, undefined, "FAST")
+    doc.addImage(radiusPng, "PNG", (W - lW) / 2, logoY + 3.5, lW, lH, undefined, "FAST")
   }
 
-  const capaTituloY = logoY + 48
+  const capaTituloY = logoY + 42
   doc.setFontSize(17); doc.setFont("helvetica", "bold")
-  doc.setTextColor(...C.corporate)
+  doc.setTextColor(...C.navy)
   const tituloCapa = doc.splitTextToSize(`RELATÓRIO DE MANUTENÇÃO ${tipoVisita}`, W - 46)
   doc.text(tituloCapa, W / 2, capaTituloY, { align: "center" })
 
   doc.setFontSize(12); doc.setFont("helvetica", "bold")
-  doc.setTextColor(...C.charcoal)
+  doc.setTextColor(...C.navySoft)
   doc.text(competencia, W / 2, capaTituloY + tituloCapa.length * 7 + 8, { align: "center" })
 
   doc.setFontSize(8); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.slate)
   doc.text(`OS ${data.numero}`, W / 2, capaTituloY + tituloCapa.length * 7 + 16, { align: "center" })
 
-  doc.setDrawColor(...C.border)
+  doc.setDrawColor(...C.navyMuted)
   doc.setLineWidth(0.4)
-  doc.line(MARGIN + 30, capaTituloY + tituloCapa.length * 7 + 24, W - MARGIN - 30, capaTituloY + tituloCapa.length * 7 + 24)
+  doc.line(MARGIN + 42, capaTituloY + tituloCapa.length * 7 + 24, W - MARGIN - 42, capaTituloY + tituloCapa.length * 7 + 24)
 
   doc.setFontSize(8); doc.setFont("helvetica", "normal")
-  doc.setTextColor(...C.slate)
+  doc.setTextColor(...C.navyMuted)
   doc.text("Responsável Técnico", W / 2, capaTituloY + tituloCapa.length * 7 + 34, { align: "center" })
   doc.setFontSize(10); doc.setFont("helvetica", "bold")
-  doc.setTextColor(...C.charcoal)
+  doc.setTextColor(...C.navy)
   doc.text(data.responsavel?.nome ?? "Não informado", W / 2, capaTituloY + tituloCapa.length * 7 + 41, { align: "center" })
 
-  doc.setDrawColor(...C.border)
+  doc.setDrawColor(...C.navyMuted)
   doc.setLineWidth(0.4)
   doc.line(MARGIN, H - 24, W - MARGIN, H - 24)
 
-  if (radiusPng) {
-    const fH = 5.5
-    const fW = fH * criativaAspect
-    doc.addImage(radiusPng, "PNG", MARGIN, H - 19, fW, fH, undefined, "FAST")
-    doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
-    doc.setTextColor(...C.muted)
-    doc.text("Relatório gerado por Sinapse Criativa", MARGIN + fW + 2, H - 15.5)
-  } else {
-    doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
-    doc.setTextColor(...C.muted)
-    doc.text("Relatório gerado por Sinapse Criativa", MARGIN, H - 15.5)
-  }
-
   doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
-  doc.setTextColor(...C.muted)
+  doc.setTextColor(...C.navyMuted)
   doc.text(`Gerado em ${geradoEm}`, W - MARGIN, H - 15.5, { align: "right" })
-
-  doc.setFillColor(...C.border)
-  doc.rect(0, H - 6, W, 6, "F")
-  doc.setFontSize(7); doc.setFont("helvetica", "normal")
-  doc.setTextColor(...C.slate)
-  doc.text("Documento técnico – uso interno", W / 2, H - 2.5, { align: "center" })
 
   // ══════════════════════════════════════════
   // PÁGINA 1 — INTRODUÇÃO + OBRIGAÇÕES
@@ -872,27 +895,27 @@ export async function generateOSPDF(data: OSReportData) {
     if (y > H - 40) { doc.addPage(); drawHeader("SLA"); y = 26; }
 
     const slaColors: Record<string, Color> = {
-      green: [34, 84, 61], yellow: [120, 113, 108], orange: [120, 113, 108], red: [120, 113, 108],
+      green: [34, 84, 61], yellow: [196, 138, 24], orange: [217, 119, 6], red: [185, 28, 28],
     }
     const slaColor = slaColors[data.sla.statusColor] ?? C.muted
 
-    doc.setFillColor(...C.surface)
+    doc.setFillColor(...C.bluePale)
     doc.roundedRect(MARGIN, y, W - MARGIN * 2, 22, 2, 2, "F")
-    doc.setDrawColor(...C.border)
-    doc.setLineWidth(0.2)
+    doc.setDrawColor(...C.navyMuted)
+    doc.setLineWidth(0.3)
     doc.roundedRect(MARGIN, y, W - MARGIN * 2, 22, 2, 2, "S")
 
     doc.setFontSize(7); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.muted); doc.text("STATUS SLA", MARGIN + 4, y + 8)
+    doc.setTextColor(...C.navyMuted); doc.text("STATUS SLA", MARGIN + 4, y + 8)
     doc.setFontSize(10); doc.setTextColor(...slaColor)
     doc.text(data.sla.statusLabel, MARGIN + 4, y + 15)
 
-    doc.setFontSize(7); doc.setTextColor(...C.muted); doc.text("TEMPO DECORRIDO", W / 2, y + 8, { align: "center" })
-    doc.setFontSize(10); doc.setTextColor(...C.charcoal)
+    doc.setFontSize(7); doc.setTextColor(...C.navyMuted); doc.text("TEMPO DECORRIDO", W / 2, y + 8, { align: "center" })
+    doc.setFontSize(10); doc.setTextColor(...C.navy)
     doc.text(data.sla.tempoFormatado, W / 2, y + 15, { align: "center" })
 
-    doc.setFontSize(7); doc.setTextColor(...C.muted); doc.text("REFERÊNCIA", W - MARGIN - 4, y + 8, { align: "right" })
-    doc.setFontSize(8.5); doc.setTextColor(...C.charcoal)
+    doc.setFontSize(7); doc.setTextColor(...C.navyMuted); doc.text("REFERÊNCIA", W - MARGIN - 4, y + 8, { align: "right" })
+    doc.setFontSize(8.5); doc.setTextColor(...C.navy)
     doc.text(data.sla.referenciaManual, W - MARGIN - 4, y + 15, { align: "right" })
     y += 28
   }
@@ -910,25 +933,31 @@ export async function generateOSPDF(data: OSReportData) {
   y += 6
   if (y > H - 40) { doc.addPage(); drawHeader("Assinatura"); y = 26; }
 
-  doc.setFillColor(...C.surface)
+  doc.setFillColor(...C.navy)
   doc.roundedRect(MARGIN, y, W - MARGIN * 2, 42, 2, 2, "F")
-  doc.setDrawColor(...C.border)
-  doc.setLineWidth(0.3)
+  doc.setDrawColor(...C.navySoft)
+  doc.setLineWidth(0.4)
   doc.roundedRect(MARGIN, y, W - MARGIN * 2, 42, 2, 2, "S")
 
   doc.setFontSize(8); doc.setFont("helvetica", "bold")
-  doc.setTextColor(...C.charcoal)
+  doc.setTextColor(...C.white)
   doc.text("Identificações", MARGIN + 4, y + 8)
 
   doc.setFontSize(7.3); doc.setFont("helvetica", "normal")
-  doc.setTextColor(...C.dark)
+  doc.setTextColor(...C.white)
   doc.text(`Fiscal: ${FISCAL_FIXO_NOME}`, MARGIN + 4, y + 15)
   doc.text(`Técnico Executante: ${data.abertoPor?.nome ?? "Não informado"}`, MARGIN + 4, y + 21)
   doc.text(`Responsável Técnico: ${data.responsavel?.nome ?? "Não informado"}`, MARGIN + 4, y + 27)
 
-  doc.setFontSize(7); doc.setTextColor(...C.muted)
+  doc.setFontSize(7); doc.setTextColor(...C.white)
   doc.text(`Relatório emitido em ${geradoEm}`, MARGIN + 4, y + 35)
   doc.text("Operação: P&D Casa Nova · Cliente: AXIA", MARGIN + 4, y + 39)
+
+  if (radiusPng) {
+    const logoH = 12
+    const logoW = logoH * radiusAspect
+    doc.addImage(radiusPng, "PNG", W - MARGIN - logoW - 2, y + 12, logoW, logoH, undefined, "FAST")
+  }
 
   y += 48
 

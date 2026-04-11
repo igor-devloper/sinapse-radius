@@ -3,12 +3,24 @@ import { prisma } from "@/lib/prisma";
 import { calcularSLA, formatarDataCurta } from "@/lib/sla-manual";
 import { subDays } from "date-fns";
 import {
-  ClipboardList, CheckCircle2, Clock,
-  TrendingUp, Zap, CalendarClock, ShieldAlert
+  ClipboardList,
+  CheckCircle2,
+  Clock,
+  TrendingUp,
+  Zap,
+  CalendarClock,
+  ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import Link from "next/link";
 import { SLABadge } from "@/components/os/sla-badge";
+
+function getSaudacao() {
+  const hora = new Date().getHours();
+  if (hora < 12) return "Bom dia";
+  if (hora < 18) return "Boa tarde";
+  return "Boa noite";
+}
 
 export default async function DashboardPage() {
   const { userId } = await auth();
@@ -32,10 +44,16 @@ export default async function DashboardPage() {
     prisma.ordemServico.count({ where: { status: "ABERTA" } }),
     prisma.ordemServico.count({ where: { status: "EM_ANDAMENTO" } }),
     prisma.ordemServico.count({ where: { status: "CONCLUIDA" } }),
-    prisma.ordemServico.count({ where: { prioridade: "CRITICA", status: { notIn: ["CONCLUIDA", "CANCELADA"] } } }),
+    prisma.ordemServico.count({
+      where: { prioridade: "CRITICA", status: { notIn: ["CONCLUIDA", "CANCELADA"] } },
+    }),
     prisma.ordemServico.count({ where: { createdAt: { gte: ha30dias } } }),
-    prisma.ordemServico.count({ where: { dataProgramada: { gte: agora, lte: em7dias }, status: { notIn: ["CONCLUIDA", "CANCELADA"] } } }),
-    // SLA vencido — SOMENTE corretivas com dataEmissaoAxia e tipoAtividadeCorretiva
+    prisma.ordemServico.count({
+      where: {
+        dataProgramada: { gte: agora, lte: em7dias },
+        status: { notIn: ["CONCLUIDA", "CANCELADA"] },
+      },
+    }),
     prisma.ordemServico.findMany({
       where: {
         tipoOS: "CORRETIVA",
@@ -54,7 +72,6 @@ export default async function DashboardPage() {
       calcularSLA(os.dataEmissaoAxia, os.tipoAtividadeCorretiva).vencido
   ).length;
 
-  // Últimas OS abertas
   const ultimasOS = await prisma.ordemServico.findMany({
     where: { status: { not: "CANCELADA" } },
     include: { responsavel: { select: { nome: true } } },
@@ -62,7 +79,6 @@ export default async function DashboardPage() {
     take: 6,
   });
 
-  // Próximas manutenções (dataProgramada futura)
   const proximasManutencoes = await prisma.ordemServico.findMany({
     where: { dataProgramada: { gte: agora }, status: { notIn: ["CONCLUIDA", "CANCELADA"] } },
     include: { responsavel: { select: { nome: true } } },
@@ -81,17 +97,17 @@ export default async function DashboardPage() {
     { label: "Prog. próx. 7 dias", value: osProximas7dias, icon: CalendarClock, color: "text-indigo-600", bg: "bg-indigo-50" },
   ];
 
+  const saudacao = getSaudacao();
+
   return (
     <div className="space-y-8 max-w-7xl mx-auto">
-      {/* Saudação */}
       <div>
         <h1 className="text-2xl font-semibold text-gray-900">
-          Bom dia, {usuario?.nome.split(" ")[0]} 👋
+          {saudacao}, {usuario?.nome.split(" ")[0]} 👋
         </h1>
         <p className="text-sm text-gray-500 mt-1">Visão geral das Ordens de Serviço</p>
       </div>
 
-      {/* Cards de métricas */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {cards.map((card) => (
           <Card key={card.label} className="border-0 shadow-sm">
@@ -109,7 +125,6 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Últimas OS */}
         <div className="lg:col-span-2">
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-3">
@@ -135,7 +150,10 @@ export default async function DashboardPage() {
                     >
                       <div className="flex flex-col gap-0.5 min-w-0">
                         <span className="text-sm font-medium text-gray-900 truncate">{os.titulo}</span>
-                        <span className="text-xs text-gray-400">{os.numero} · {os.subsistema}{os.componenteTag ? ` · ${os.componenteTag}` : ""}</span>
+                        <span className="text-xs text-gray-400">
+                          {os.numero} · {os.subsistema}
+                          {os.componenteTag ? ` · ${os.componenteTag}` : ""}
+                        </span>
                       </div>
                       <div className="flex items-center gap-2 shrink-0 ml-4">
                         {sla && <SLABadge sla={sla} compact />}
@@ -149,7 +167,6 @@ export default async function DashboardPage() {
           </Card>
         </div>
 
-        {/* Próximas manutenções */}
         <div>
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-3">

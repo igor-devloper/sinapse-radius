@@ -5,9 +5,50 @@ import { calcularSLA } from "@/lib/sla-manual";
 import { z } from "zod";
 import { getChecklistItemsWithAssets } from "@/lib/assets";
 
+type OSApiRecord = {
+  id: string;
+  tipoOS: "PREVENTIVA" | "CORRETIVA";
+  dataEmissaoAxia: Date | null;
+  tipoAtividadeCorretiva: string | null;
+  responsavel: { id: string; nome: string; email: string; avatarUrl: string | null; cargo: string } | null;
+  abertoPor: { id: string; nome: string; email: string };
+  comentarios: Array<{
+    id: string;
+    texto: string;
+    createdAt: Date;
+    usuario: { id: string; nome: string; avatarUrl: string | null };
+  }>;
+  historicoOS: Array<{
+    id: string;
+    statusDe: string | null;
+    statusPara: string;
+    observacao: string | null;
+    createdAt: Date;
+    usuario: { id: string; nome: string };
+  }>;
+  anexos: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number; createdAt: Date }>;
+  topicosCorretiva: Array<{
+    id: string;
+    titulo: string;
+    observacao: string | null;
+    ordem: number;
+    anexos: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number; createdAt: Date }>;
+  }>;
+};
+
+type PrismaOsClient = typeof prisma & {
+  ordemServico: {
+    findUnique(args: unknown): Promise<OSApiRecord | null>;
+  };
+};
+
+const db = prisma as PrismaOsClient;
+
 const atualizarOSSchema = z.object({
   status:         z.enum(["ABERTA", "EM_ANDAMENTO", "AGUARDANDO_PECA", "PAUSADA", "CONCLUIDA", "CANCELADA"]).optional(),
   responsavelId:  z.string().optional(),
+  subsistema:     z.string().min(2).optional(),
+  componenteTag:  z.string().optional().nullable(),
   dataProgramada: z.string().datetime().optional(),
   dataInicio:     z.string().datetime().optional().nullable(),
   dataConclusao:  z.string().datetime().optional().nullable(),
@@ -21,7 +62,7 @@ export async function GET(
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: "Não autorizado" }, { status: 401 });
 
-  const os = await prisma.ordemServico.findUnique({
+  const os = await db.ordemServico.findUnique({
     where: { id: (await params).id },
     include: {
       responsavel:  { select: { id: true, nome: true, email: true, avatarUrl: true, cargo: true } },
@@ -35,6 +76,10 @@ export async function GET(
         orderBy: { createdAt: "desc" },
       },
       anexos:        true,
+      topicosCorretiva: {
+        include: { anexos: { orderBy: { createdAt: "asc" } } },
+        orderBy: [{ ordem: "asc" }, { createdAt: "asc" }],
+      },
     },
   });
 
@@ -70,7 +115,7 @@ export async function PATCH(
   if (!parsed.success)
     return NextResponse.json({ error: parsed.error.flatten() }, { status: 400 });
 
-  const { status, responsavelId, dataProgramada, dataInicio, dataConclusao, observacao } = parsed.data;
+  const { status, responsavelId, subsistema, componenteTag, dataProgramada, dataInicio, dataConclusao, observacao } = parsed.data;
 
   const osAtualizada = await prisma.$transaction(async (tx) => {
     const updated = await tx.ordemServico.update({
@@ -78,6 +123,8 @@ export async function PATCH(
       data: {
         ...(status         !== undefined && { status }),
         ...(responsavelId  !== undefined && { responsavelId: responsavelId || null }),
+        ...(subsistema     !== undefined && { subsistema }),
+        ...(componenteTag  !== undefined && { componenteTag: componenteTag || null }),
         ...(dataProgramada !== undefined && { dataProgramada: new Date(dataProgramada) }),
         ...(dataInicio     !== undefined && { dataInicio:     dataInicio ? new Date(dataInicio) : null }),
         ...(dataConclusao  !== undefined && { dataConclusao:  dataConclusao ? new Date(dataConclusao) : null }),

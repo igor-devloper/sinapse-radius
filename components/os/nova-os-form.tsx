@@ -381,7 +381,7 @@ export function NovaOSForm({
     periodicidadesSelecionadas: [] as string[],
     titulo: "", prioridade: "MEDIA",
     dataProgramada: "", dataFimProgramada: "",
-    containerId: "", responsavelId: "",
+    subsistema: "Geral", containerId: "", responsavelId: "",
   });
 
   // itemAssets: itemId → assetId (string, not full draft)
@@ -465,7 +465,7 @@ export function NovaOSForm({
           prioridade: prevForm.prioridade || prioridadeAuto,
           dataProgramada: new Date(prevForm.dataProgramada).toISOString(),
           dataFimProgramada: prevForm.dataFimProgramada ? new Date(prevForm.dataFimProgramada).toISOString() : undefined,
-          subsistema: "Geral",
+          subsistema: prevForm.subsistema,
           containerId: prevForm.containerId || undefined,
           responsavelId: prevForm.responsavelId || undefined,
           checklistAssets,
@@ -651,12 +651,22 @@ export function NovaOSForm({
                 <Input value={prevForm.titulo} onChange={(e) => setPrev("titulo", e.target.value)}
                   className="rounded-xl border-gray-200 focus-visible:ring-purple-300" placeholder="Gerado automaticamente" />
               </Field>
+              <Field label="Subsistema" required>
+                <Select value={prevForm.subsistema} onValueChange={(v) => setPrev("subsistema", v)}>
+                  <SelectTrigger className="rounded-xl border-gray-200 bg-white">
+                    <SelectValue placeholder="Selecionar…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SUBSISTEMAS.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
               <Field label="Container ID">
                 <Input value={prevForm.containerId} onChange={(e) => setPrev("containerId", e.target.value)}
                   className="rounded-xl border-gray-200 focus-visible:ring-purple-300" placeholder="HK3-01" />
               </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
               <Field label="Prioridade" required>
                 <Select value={prevForm.prioridade || prioridadeAuto} onValueChange={(v) => setPrev("prioridade", v)}>
                   <SelectTrigger className="rounded-xl border-gray-200 bg-white"><SelectValue /></SelectTrigger>
@@ -825,7 +835,7 @@ export function NovaOSForm({
         </>
       )}
 
-      {/* Anexos */}
+      {/* Anexos
       {tipoOS && (
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 space-y-4">
           <SectionDivider>Anexos (opcional)</SectionDivider>
@@ -864,7 +874,7 @@ export function NovaOSForm({
             </div>
           )}
         </div>
-      )}
+      )} */}
 
       {/* Actions */}
       <div className="flex gap-3">

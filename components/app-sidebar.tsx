@@ -85,22 +85,20 @@ export function AppSidebar({ cargo, nome }: AppSidebarProps) {
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4 pb-2">
         <div className="flex items-center gap-2 overflow-hidden">
-          <div className="relative w-full h-8 group-data-[collapsible=icon]:hidden mb-10 mr-10 justify-center">
-            <div className="overflow-hidden rounded-md">
-              <Image
-                src="/logo.png"
-                alt="Radius Sinapse"
-                className="object-contain object-left"
-                priority
-                width={200}
-                height={200}
-              />
-            </div>
+          <div className="overflow-hidden rounded-md justify-center object-center">
+            <Image
+              src="/logo-radius-bco.png"
+              alt="Radius Sinapse"
+              priority
+              width={100}
+              height={100}
+            />
           </div>
+
           {/* Icon mode: show initials */}
-          <div className="hidden group-data-[collapsible=icon]:flex w-8 h-8 rounded-lg bg-sidebar-primary items-center justify-center shrink-0">
+          {/* <div className="hidden group-data-[collapsible=icon]:flex w-8 h-8 rounded-lg bg-sidebar-primary items-center justify-center shrink-0">
             <span className="text-sidebar-primary-foreground text-xs font-bold">RS</span>
-          </div>
+          </div> */}
         </div>
       </SidebarHeader>
 
@@ -143,7 +141,7 @@ export function AppSidebar({ cargo, nome }: AppSidebarProps) {
             {cargo.charAt(0)}
           </span>
         </div>
-        <div className="flex items-center justify-center gap-2">
+        <div className="flex items-center justify-center gap-2 group-data-[collapsible=icon]:hidden ">
           <p className="text-xs font-bold">Sistema Desenvolvido por </p>
           <div className="flex items-center justify-center bg-white px-4 max-w-25 rounded-md group-data-[collapsible=icon]:hidden">
             <SvgIcon />

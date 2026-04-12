@@ -2,10 +2,10 @@
 
 import jsPDF from "jspdf"
 
-// ─────────────────────────────────────────────
-// PALETA CORPORATIVA — Radius / AXIA
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// PALETA CORPORATIVA â€” Radius / AXIA
 // Base neutra com laranja Radius como acento
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type Color = [number, number, number]
 const C = {
   orange:      [234, 88,  12]  as Color,
@@ -29,9 +29,9 @@ const C = {
   corporate:   [31, 41, 55]    as Color,
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TIPOS
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export type OSReportData = {
   id: string
   numero: string
@@ -97,28 +97,28 @@ export type OSReportData = {
   anexos: Array<{ id: string; nome: string; url: string; tipo: string; tamanho: number }>
 }
 
-// ─────────────────────────────────────────────
-// HELPERS DE FORMATAÇÃO
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// HELPERS DE FORMATAÃ‡ÃƒO
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function fmt(iso: string | null | undefined) {
-  if (!iso) return "—"
+  if (!iso) return "â€”"
   const d = new Date(iso)
-  if (isNaN(d.getTime())) return "—"
+  if (isNaN(d.getTime())) return "â€”"
   return d.toLocaleString("pt-BR", {
     day: "2-digit", month: "2-digit", year: "numeric",
     hour: "2-digit", minute: "2-digit",
   })
 }
 function fmtDate(iso: string | null | undefined) {
-  if (!iso) return "—"
+  if (!iso) return "â€”"
   const d = new Date(iso)
-  if (isNaN(d.getTime())) return "—"
+  if (isNaN(d.getTime())) return "â€”"
   return d.toLocaleDateString("pt-BR")
 }
 function fmtMonthYear(iso: string | null | undefined) {
-  if (!iso) return "—"
+  if (!iso) return "â€”"
   const d = new Date(iso)
-  if (isNaN(d.getTime())) return "—"
+  if (isNaN(d.getTime())) return "â€”"
   return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" }).toUpperCase()
 }
 function checklistStatusLabel(s: string) {
@@ -126,7 +126,7 @@ function checklistStatusLabel(s: string) {
     PENDENTE: "Pendente",
     CONFORME: "Conforme",
     NAO_APLICAVEL: "N/A",
-    NAO_CONFORME: "Não conforme",
+    NAO_CONFORME: "NÃ£o conforme",
     CONFORME_COM_RESSALVAS: "Conforme com ressalvas",
   })[s] ?? s
 }
@@ -141,23 +141,23 @@ function tipoLabel(a: string) {
   return a === "MANUTENCAO_PREVENTIVA_GERAL" ? "PREVENTIVA" : "CORRETIVA"
 }
 
-const FISCAL_FIXO_NOME = "José Bione de Melo Filho";
+const FISCAL_FIXO_NOME = "JosÃ© Bione de Melo Filho";
 const FISCAL_FIXO_CARGO = "Engenheiro da AXIA";
 
 function buildIntroducao(data: OSReportData, tipoVisita: string) {
   const dataConclusao = fmtDate(data.dataConclusao)
   if (data.sla.isCorretiva) {
     return [
-      `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de manutenção corretiva, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
-      `A atuação teve foco no subsistema ${data.subsistema}, contemplando diagnóstico da falha, execução das intervenções corretivas previstas no escopo e registro das evidências de campo no presente relatório.`,
-      `A manutenção ${dataConclusao !== "—" ? `foi concluída em ${dataConclusao}` : "permaneceu em execução até o fechamento deste relatório"}, em conformidade com o escopo técnico definido para esta ordem de serviço.`,
+      `A equipe tÃ©cnica da Radius Mining executou a OS ${data.numero} no contexto de manutenÃ§Ã£o corretiva, com atendimento ao cliente AXIA na operaÃ§Ã£o de Casa Nova - BA.`,
+      `A atuaÃ§Ã£o teve foco no subsistema ${data.subsistema}, contemplando diagnÃ³stico da falha, execuÃ§Ã£o das intervenÃ§Ãµes corretivas previstas no escopo e registro das evidÃªncias de campo no presente relatÃ³rio.`,
+      `A manutenÃ§Ã£o ${dataConclusao !== "â€”" ? `foi concluÃ­da em ${dataConclusao}` : "permaneceu em execuÃ§Ã£o atÃ© o fechamento deste relatÃ³rio"}, em conformidade com o escopo tÃ©cnico definido para esta ordem de serviÃ§o.`,
     ]
   }
 
   return [
-    `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
-    `A visita teve foco no subsistema ${data.subsistema}, com verificação dos itens planejados, registro das evidências de campo e consolidação dos resultados no presente relatório.`,
-    `A atividade foi concluída em ${dataConclusao}, conforme o escopo definido para esta ordem de serviço.`,
+    `A equipe tÃ©cnica da Radius Mining executou a OS ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operaÃ§Ã£o de Casa Nova - BA.`,
+    `A visita teve foco no subsistema ${data.subsistema}, com verificaÃ§Ã£o dos itens planejados, registro das evidÃªncias de campo e consolidaÃ§Ã£o dos resultados no presente relatÃ³rio.`,
+    `A atividade foi concluÃ­da em ${dataConclusao}, conforme o escopo definido para esta ordem de serviÃ§o.`,
   ]
 }
 
@@ -165,23 +165,36 @@ function buildObrigacoesExecutante(data: OSReportData) {
   const totalChecklist = data.checklistItems.length
   if (data.sla.isCorretiva) {
     return [
-      "Executar as intervenções corretivas aplicáveis com rastreabilidade por atividade registrada.",
-      "Registrar evidências fotográficas e observações técnicas de forma objetiva e auditável.",
-      "Descrever cada tópico executado com título, observação de campo e documentação visual compatível com o escopo atendido.",
-      `Consolidar os resultados da visita, incluindo ${totalChecklist} tópicos técnicos registrados nesta OS, para validação do fiscal responsável.`,
+      "Executar as intervenÃ§Ãµes corretivas aplicÃ¡veis com rastreabilidade por atividade registrada.",
+      "Registrar evidÃªncias fotogrÃ¡ficas e observaÃ§Ãµes tÃ©cnicas de forma objetiva e auditÃ¡vel.",
+      "Descrever cada tÃ³pico executado com tÃ­tulo, observaÃ§Ã£o de campo e documentaÃ§Ã£o visual compatÃ­vel com o escopo atendido.",
+      `Consolidar os resultados da visita, incluindo ${totalChecklist} tÃ³picos tÃ©cnicos registrados nesta OS, para validaÃ§Ã£o do fiscal responsÃ¡vel.`,
     ]
   }
   return [
-    "Executar o checklist preventivo/corretivo aplicável com rastreabilidade por item inspecionado.",
-    "Registrar evidências fotográficas e observações técnicas de forma objetiva e auditável.",
-    "Classificar cada item conforme status operacional (Conforme, Não conforme, Conforme com ressalvas, Pendente ou N/A) de maneira coerente com o campo.",
-    `Consolidar os resultados da visita, incluindo ${totalChecklist} itens avaliados nesta OS, para validação do fiscal responsável.`,
+    "Executar o checklist preventivo/corretivo aplicÃ¡vel com rastreabilidade por item inspecionado.",
+    "Registrar evidÃªncias fotogrÃ¡ficas e observaÃ§Ãµes tÃ©cnicas de forma objetiva e auditÃ¡vel.",
+    "Classificar cada item conforme status operacional (Conforme, NÃ£o conforme, Conforme com ressalvas, Pendente ou N/A) de maneira coerente com o campo.",
+    `Consolidar os resultados da visita, incluindo ${totalChecklist} itens avaliados nesta OS, para validaÃ§Ã£o do fiscal responsÃ¡vel.`,
   ]
 }
 
-// ─────────────────────────────────────────────
+function buildCorretivaResumo(data: OSReportData) {
+  return [
+    {
+      titulo: "Motivo da OS",
+      texto: data.motivoOS?.trim() || "Motivo da ordem de serviÃ§o nÃ£o informado.",
+    },
+    {
+      titulo: "DescriÃ§Ã£o da intervenÃ§Ã£o",
+      texto: data.descricao?.trim() || "DescriÃ§Ã£o tÃ©cnica da manutenÃ§Ã£o nÃ£o informada.",
+    },
+  ]
+}
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CARREGAMENTO DE IMAGENS
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function loadSvgAsPng(url: string): Promise<{ dataUrl: string; aspect: number } | null> {
   try {
     const svgText = await fetch(url).then((r) => r.text())
@@ -248,8 +261,8 @@ function detectFormat(d: string): "PNG" | "JPEG" { return /^data:image\/png/i.te
 function stripPrefix(d: string) { return d.replace(/^data:image\/\w+;base64,/, "") }
 
 /**
- * Lê a orientação EXIF de um JPEG e retorna o grau de rotação necessário
- * para deixar a imagem "em pé" (0, 90, 180 ou 270).
+ * LÃª a orientaÃ§Ã£o EXIF de um JPEG e retorna o grau de rotaÃ§Ã£o necessÃ¡rio
+ * para deixar a imagem "em pÃ©" (0, 90, 180 ou 270).
  */
 function getExifRotation(base64: string): number {
   try {
@@ -268,7 +281,7 @@ function getExifRotation(base64: string): number {
       const segLen = (bytes[offset + 2] << 8) | bytes[offset + 3]
 
       if (marker === 0xe1) {
-        // APP1 — verifica "Exif\0\0"
+        // APP1 â€” verifica "Exif\0\0"
         const exifHeader = String.fromCharCode(...bytes.slice(offset + 4, offset + 10))
         if (exifHeader.startsWith("Exif")) {
           const tiffOffset = offset + 10
@@ -316,8 +329,8 @@ function getExifRotation(base64: string): number {
 }
 
 /**
- * Recebe um dataURL de imagem, aplica a rotação EXIF via canvas e
- * retorna { dataUrl, width, height } já corrigidos.
+ * Recebe um dataURL de imagem, aplica a rotaÃ§Ã£o EXIF via canvas e
+ * retorna { dataUrl, width, height } jÃ¡ corrigidos.
  */
 async function normalizeImageOrientation(
   dataUrl: string
@@ -351,9 +364,9 @@ async function normalizeImageOrientation(
   })
 }
 
-// ─────────────────────────────────────────────
-// GERAÇÃO DE TEXTO POR IA
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// GERAÃ‡ÃƒO DE TEXTO POR IA
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 async function generateConsolidatedSummary(data: OSReportData): Promise<{
   impactoOperacional: string
 }> {
@@ -365,50 +378,50 @@ async function generateConsolidatedSummary(data: OSReportData): Promise<{
   const pendItems = data.checklistItems.filter((i) => i.status === "PENDENTE").length
   const ocorrencias = data.comentarios.length
 
-  const prompt = `Você é o redator técnico da Radius Mining, responsável por elaborar relatórios de O&M enviados ao cliente AXIA.
+  const prompt = `VocÃª Ã© o redator tÃ©cnico da Radius Mining, responsÃ¡vel por elaborar relatÃ³rios de O&M enviados ao cliente AXIA.
 
-Gere um relatório técnico profissional com base nos dados abaixo, para ser entregue formalmente ao cliente.
+Gere um relatÃ³rio tÃ©cnico profissional com base nos dados abaixo, para ser entregue formalmente ao cliente.
 
 === DADOS DA VISITA ===
-Tipo de manutenção: ${tipoVisita}
-Número da OS: ${data.numero}
-Título: ${data.titulo}
+Tipo de manutenÃ§Ã£o: ${tipoVisita}
+NÃºmero da OS: ${data.numero}
+TÃ­tulo: ${data.titulo}
 Subsistema: ${data.subsistema}
-Container: ${data.containerId ?? "não especificado"}
-Data de emissão: ${fmtDate(data.dataEmissaoAxia)}
-Data de conclusão: ${fmtDate(data.dataConclusao)}
-Responsável técnico: ${data.responsavel?.nome ?? "não informado"}
-Descrição técnica: ${data.descricao}
+Container: ${data.containerId ?? "nÃ£o especificado"}
+Data de emissÃ£o: ${fmtDate(data.dataEmissaoAxia)}
+Data de conclusÃ£o: ${fmtDate(data.dataConclusao)}
+ResponsÃ¡vel tÃ©cnico: ${data.responsavel?.nome ?? "nÃ£o informado"}
+DescriÃ§Ã£o tÃ©cnica: ${data.descricao}
 Motivo / causa raiz: ${data.motivoOS}
 
-=== EXECUÇÃO ===
-Quantidade de registros técnicos: ${totalChecklist}
+=== EXECUÃ‡ÃƒO ===
+Quantidade de registros tÃ©cnicos: ${totalChecklist}
 Itens conformes: ${okItems}
 Itens com ressalvas: ${ressalvaItems}
-Itens não conformes: ${atencaoItems}
+Itens nÃ£o conformes: ${atencaoItems}
 Itens pendentes: ${pendItems}
 Percentual de conformidade: ${totalChecklist > 0 ? Math.round(((okItems + ressalvaItems) / totalChecklist) * 100) : 0}%
 
-=== OCORRÊNCIAS ===
-Total de ocorrências registradas: ${ocorrencias}
+=== OCORRÃŠNCIAS ===
+Total de ocorrÃªncias registradas: ${ocorrencias}
 ${data.comentarios.slice(0, 5).map((c) => `- ${c.texto}`).join("\n")}
 
-=== CONCLUSÃO MANUAL DO RESPONSÁVEL ===
-${data.conclusaoManual?.trim() ? data.conclusaoManual : "Não informada."}
+=== CONCLUSÃƒO MANUAL DO RESPONSÃVEL ===
+${data.conclusaoManual?.trim() ? data.conclusaoManual : "NÃ£o informada."}
 
-=== INSTRUÇÕES DE ESCRITA ===
-Escreva exclusivamente em português técnico formal.
-NÃO mencione nomes de sistemas internos, dashboards ou plataformas de software.
-Use linguagem de relatório técnico enviado ao cliente.
+=== INSTRUÃ‡Ã•ES DE ESCRITA ===
+Escreva exclusivamente em portuguÃªs tÃ©cnico formal.
+NÃƒO mencione nomes de sistemas internos, dashboards ou plataformas de software.
+Use linguagem de relatÃ³rio tÃ©cnico enviado ao cliente.
 Seja objetivo, preciso e profissional.
-Trate o destinatário como "cliente" ou "AXIA".
-Use "equipe técnica da Radius Mining" como sujeito das ações.
-Não use termos coloquiais, ambíguos ou sem lastro técnico.
-Quando houver risco, pendência ou desvio, descreva impacto operacional e ação recomendada.
+Trate o destinatÃ¡rio como "cliente" ou "AXIA".
+Use "equipe tÃ©cnica da Radius Mining" como sujeito das aÃ§Ãµes.
+NÃ£o use termos coloquiais, ambÃ­guos ou sem lastro tÃ©cnico.
+Quando houver risco, pendÃªncia ou desvio, descreva impacto operacional e aÃ§Ã£o recomendada.
 
-Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
+Retorne APENAS um JSON vÃ¡lido (sem markdown, sem texto antes ou depois):
 {
-  "impactoOperacional": "1 a 2 parágrafos descrevendo o impacto da manutenção na operação, tempo de indisponibilidade se houver, e resultado esperado com as ações executadas"
+  "impactoOperacional": "1 a 2 parÃ¡grafos descrevendo o impacto da manutenÃ§Ã£o na operaÃ§Ã£o, tempo de indisponibilidade se houver, e resultado esperado com as aÃ§Ãµes executadas"
 }`
 
   try {
@@ -431,19 +444,19 @@ Retorne APENAS um JSON válido (sem markdown, sem texto antes ou depois):
     if (data.sla.isCorretiva) {
       return {
         impactoOperacional:
-          `A manutenção corretiva executada atuou diretamente sobre a falha registrada no subsistema ${data.subsistema}, com foco em restabelecer a condição operacional do sistema e reduzir o risco de recorrência da anomalia observada. As intervenções registradas nesta OS contribuíram para recompor a confiabilidade do conjunto atendido e suportar a continuidade da operação sob os critérios técnicos aplicáveis.\n\nPermanece como recomendação o acompanhamento do comportamento do equipamento após a intervenção, com atenção a alarmes, desvios de processo e eventuais evidências de reincidência, de modo a assegurar estabilidade operacional e resposta tempestiva caso novos sintomas sejam identificados.`,
+          `A manutenÃ§Ã£o corretiva executada atuou diretamente sobre a falha registrada no subsistema ${data.subsistema}, com foco em restabelecer a condiÃ§Ã£o operacional do sistema e reduzir o risco de recorrÃªncia da anomalia observada. As intervenÃ§Ãµes registradas nesta OS contribuÃ­ram para recompor a confiabilidade do conjunto atendido e suportar a continuidade da operaÃ§Ã£o sob os critÃ©rios tÃ©cnicos aplicÃ¡veis.\n\nPermanece como recomendaÃ§Ã£o o acompanhamento do comportamento do equipamento apÃ³s a intervenÃ§Ã£o, com atenÃ§Ã£o a alarmes, desvios de processo e eventuais evidÃªncias de reincidÃªncia, de modo a assegurar estabilidade operacional e resposta tempestiva caso novos sintomas sejam identificados.`,
       }
     }
     return {
       impactoOperacional:
-        `A manutenção executada contribui diretamente para a continuidade operacional e eficiência do container de mineração, reduzindo o risco de falhas não programadas e preservando a disponibilidade do sistema. As ações corretivas e preventivas realizadas garantem conformidade com os padrões técnicos estabelecidos contratualmente.`,
+        `A manutenÃ§Ã£o executada contribui diretamente para a continuidade operacional e eficiÃªncia do container de mineraÃ§Ã£o, reduzindo o risco de falhas nÃ£o programadas e preservando a disponibilidade do sistema. As aÃ§Ãµes corretivas e preventivas realizadas garantem conformidade com os padrÃµes tÃ©cnicos estabelecidos contratualmente.`,
     }
   }
 }
 
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // GERADOR PRINCIPAL DO PDF
-// ─────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function generateOSPDF(data: OSReportData) {
   const doc = new jsPDF({ unit: "mm", format: "a4" })
   const W = doc.internal.pageSize.width
@@ -465,9 +478,9 @@ export async function generateOSPDF(data: OSReportData) {
   const tipoVisita  = tipoLabel(data.tipoAtividade)
   const geradoEm    = new Date().toLocaleString("pt-BR")
 
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // HELPERS DE LAYOUT
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
   function drawHeader(pageTitle: string) {
     void pageTitle
@@ -506,16 +519,16 @@ export async function generateOSPDF(data: OSReportData) {
         doc.addImage(criativaPng, "PNG", MARGIN, H - 9.5, fW, fH, undefined, "FAST")
         doc.setFontSize(6); doc.setFont("helvetica", "normal")
         doc.setTextColor(...C.muted)
-        doc.text("Relatório gerado por Sinapse Criativa", MARGIN + fW + 1.5, H - 6.5)
+        doc.text("RelatÃ³rio gerado por Sinapse Criativa", MARGIN + fW + 1.5, H - 6.5)
       } else {
         doc.setFontSize(6); doc.setFont("helvetica", "normal")
         doc.setTextColor(...C.muted)
-        doc.text("Relatório gerado por Sinapse Criativa", MARGIN, H - 6.5)
+        doc.text("RelatÃ³rio gerado por Sinapse Criativa", MARGIN, H - 6.5)
       }
 
       doc.setFontSize(6.5); doc.setFont("helvetica", "normal")
       doc.setTextColor(...C.muted)
-      doc.text(`Página ${p - 1} de ${total - 1}`, W - MARGIN, H - 6.5, { align: "right" })
+      doc.text(`PÃ¡gina ${p - 1} de ${total - 1}`, W - MARGIN, H - 6.5, { align: "right" })
     }
   }
 
@@ -529,9 +542,9 @@ export async function generateOSPDF(data: OSReportData) {
     return y + 12
   }
 
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // CAPA
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   doc.setFillColor(...C.white)
   doc.rect(0, 0, W, H, "F")
 
@@ -547,7 +560,7 @@ export async function generateOSPDF(data: OSReportData) {
   const capaTituloY = logoY + 42
   doc.setFontSize(17); doc.setFont("helvetica", "bold")
   doc.setTextColor(...C.navy)
-  const tituloCapa = doc.splitTextToSize(`RELATÓRIO DE MANUTENÇÃO ${tipoVisita}`, W - 46)
+  const tituloCapa = doc.splitTextToSize(`RELATÃ“RIO DE MANUTENÃ‡ÃƒO ${tipoVisita}`, W - 46)
   doc.text(tituloCapa, W / 2, capaTituloY, { align: "center" })
 
   doc.setFontSize(12); doc.setFont("helvetica", "bold")
@@ -564,10 +577,10 @@ export async function generateOSPDF(data: OSReportData) {
 
   doc.setFontSize(8); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.navyMuted)
-  doc.text("Responsável Técnico", W / 2, capaTituloY + tituloCapa.length * 7 + 34, { align: "center" })
+  doc.text("ResponsÃ¡vel TÃ©cnico", W / 2, capaTituloY + tituloCapa.length * 7 + 34, { align: "center" })
   doc.setFontSize(10); doc.setFont("helvetica", "bold")
   doc.setTextColor(...C.navy)
-  doc.text(data.responsavel?.nome ?? "Não informado", W / 2, capaTituloY + tituloCapa.length * 7 + 41, { align: "center" })
+  doc.text(data.responsavel?.nome ?? "NÃ£o informado", W / 2, capaTituloY + tituloCapa.length * 7 + 41, { align: "center" })
 
   doc.setDrawColor(...C.navyMuted)
   doc.setLineWidth(0.4)
@@ -577,17 +590,17 @@ export async function generateOSPDF(data: OSReportData) {
   doc.setTextColor(...C.navyMuted)
   doc.text(`Gerado em ${geradoEm}`, W - MARGIN, H - 15.5, { align: "right" })
 
-  // ══════════════════════════════════════════
-  // PÁGINA 1 — INTRODUÇÃO + OBRIGAÇÕES
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // PÃGINA 1 â€” INTRODUÃ‡ÃƒO + OBRIGAÃ‡Ã•ES
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   doc.addPage()
-  drawHeader("Introdução da Visita")
+  drawHeader("IntroduÃ§Ã£o da Visita")
   let y = 26
 
-  y = sectionBar(y, "1. Introdução")
+  y = sectionBar(y, "1. IntroduÃ§Ã£o")
 
   for (const para of buildIntroducao(data, tipoVisita)) {
-    if (y > H - 30) { doc.addPage(); drawHeader("Introdução"); y = 28; }
+    if (y > H - 30) { doc.addPage(); drawHeader("IntroduÃ§Ã£o"); y = 28; }
     doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.dark)
     const lines = doc.splitTextToSize(para, W - MARGIN * 2)
@@ -595,22 +608,55 @@ export async function generateOSPDF(data: OSReportData) {
     y += lines.length * 4.5 + 2.5
   }
 
-  if (y > H - 55) { doc.addPage(); drawHeader("Obrigações do Executante"); y = 26; }
+  if (data.sla.isCorretiva) {
+    if (y > H - 80) { doc.addPage(); drawHeader("Dados da OS Corretiva"); y = 26; }
+    y += 3
+    y = sectionBar(y, "2. Dados da OS Corretiva")
+
+    for (const bloco of buildCorretivaResumo(data)) {
+      const textoLines = doc.splitTextToSize(bloco.texto, W - MARGIN * 2 - 10)
+      const boxH = Math.max(18, 10 + textoLines.length * 4.2)
+
+      if (y + boxH > H - 24) {
+        doc.addPage()
+        drawHeader("Dados da OS Corretiva")
+        y = 26
+        y = sectionBar(y, "2. Dados da OS Corretiva")
+      }
+
+      doc.setFillColor(...C.bluePale)
+      doc.roundedRect(MARGIN, y, W - MARGIN * 2, boxH, 2, 2, "F")
+      doc.setDrawColor(...C.navyMuted)
+      doc.setLineWidth(0.25)
+      doc.roundedRect(MARGIN, y, W - MARGIN * 2, boxH, 2, 2, "S")
+
+      doc.setFontSize(7.2); doc.setFont("helvetica", "bold")
+      doc.setTextColor(...C.navy)
+      doc.text(bloco.titulo.toUpperCase(), MARGIN + 4, y + 5)
+
+      doc.setFontSize(8); doc.setFont("helvetica", "normal")
+      doc.setTextColor(...C.dark)
+      doc.text(textoLines, MARGIN + 4, y + 10)
+      y += boxH + 4
+    }
+  }
+
+  if (y > H - 55) { doc.addPage(); drawHeader("ObrigaÃ§Ãµes do Executante"); y = 26; }
   y += 3
-  y = sectionBar(y, "2. Obrigações do Executante")
+  y = sectionBar(y, data.sla.isCorretiva ? "3. ObrigaÃ§Ãµes do Executante" : "2. ObrigaÃ§Ãµes do Executante")
 
   for (const obrigacao of buildObrigacoesExecutante(data)) {
-    if (y > H - 22) { doc.addPage(); drawHeader("Obrigações do Executante"); y = 26; }
+    if (y > H - 22) { doc.addPage(); drawHeader("ObrigaÃ§Ãµes do Executante"); y = 26; }
     doc.setFontSize(8.2); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.dark)
-    const lines = doc.splitTextToSize(`• ${obrigacao}`, W - MARGIN * 2 - 2)
+    const lines = doc.splitTextToSize(`â€¢ ${obrigacao}`, W - MARGIN * 2 - 2)
     doc.text(lines, MARGIN + 1, y)
     y += lines.length * 4.4 + 1.8
   }
 
-  // ══════════════════════════════════════════
-  // PÁGINA 2 — ATIVIDADES + OCORRÊNCIAS
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // PÃGINA 2 â€” ATIVIDADES + OCORRÃŠNCIAS
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   doc.addPage()
   drawHeader("Atividades Realizadas")
   y = 26
@@ -629,7 +675,7 @@ export async function generateOSPDF(data: OSReportData) {
     // doc.setFontSize(7.2); doc.setFont("helvetica", "normal")
     // doc.setTextColor(...C.muted)
     // doc.text(
-    //   `Conformes: ${ok}  |  Ressalvas: ${ressalva}  |  Não conformes: ${atencao}  |  N/A: ${naoAplicavel}  |  Pendentes: ${pendente}  |  Conformidade: ${pct}%`,
+    //   `Conformes: ${ok}  |  Ressalvas: ${ressalva}  |  NÃ£o conformes: ${atencao}  |  N/A: ${naoAplicavel}  |  Pendentes: ${pendente}  |  Conformidade: ${pct}%`,
     //   MARGIN,
     //   y + 3.5
     // )
@@ -638,7 +684,7 @@ export async function generateOSPDF(data: OSReportData) {
     const grupos: Record<string, typeof data.checklistItems> = {}
     for (const item of data.checklistItems) { (grupos[item.subsistema] ??= []).push(item) }
 
-    // Pré-carrega todas as fotos de checklist em paralelo
+    // PrÃ©-carrega todas as fotos de checklist em paralelo
     type FotoCarregada = {
       itemId: string   // itemId do checklist (ex: "P-001")
       dataUrl: string
@@ -674,7 +720,7 @@ export async function generateOSPDF(data: OSReportData) {
       )
     ).filter((f): f is FotoCarregada => f !== null)
 
-    // Mapa: itemId → fotos carregadas
+    // Mapa: itemId â†’ fotos carregadas
     const fotosPorItem: Record<string, FotoCarregada[]> = {}
     for (const f of todasFotos) {
       (fotosPorItem[f.itemId] ??= []).push(f)
@@ -702,14 +748,14 @@ export async function generateOSPDF(data: OSReportData) {
         const statusLbl = checklistStatusLabel(item.status)
         const statusClr = checklistStatusColor(item.status)
 
-        // ── Linha de cabeçalho do item ────────────────────────────────
+        // â”€â”€ Linha de cabeÃ§alho do item â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
         if (y > H - 30) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
 
         // separador sutil entre itens
         doc.setFillColor(...C.border)
         doc.rect(MARGIN, y, W - MARGIN * 2, 0.3, "F")
 
-        // Descrição
+        // DescriÃ§Ã£o
         doc.setFontSize(7.5); doc.setFont("helvetica", "normal")
         doc.setTextColor(...C.dark)
         const descLines = doc.splitTextToSize(item.descricao, W - MARGIN * 2 - 50)
@@ -727,7 +773,7 @@ export async function generateOSPDF(data: OSReportData) {
 
         y += 10
 
-        // Observação (se houver)
+        // ObservaÃ§Ã£o (se houver)
         if (item.observacao) {
           if (y > H - 20) { doc.addPage(); drawHeader("Atividades (cont.)"); y = 26; }
           const obsLines = doc.splitTextToSize(item.observacao, W - MARGIN * 2 - 12)
@@ -740,18 +786,18 @@ export async function generateOSPDF(data: OSReportData) {
           doc.roundedRect(MARGIN, y, W - MARGIN * 2, obsH, 1, 1, "S")
           doc.setFontSize(6.5); doc.setFont("helvetica", "bold")
           doc.setTextColor(...C.corporate)
-          doc.text("OBSERVAÇÃO DE CAMPO", MARGIN + 4, y + 4.2)
+          doc.text("OBSERVAÃ‡ÃƒO DE CAMPO", MARGIN + 4, y + 4.2)
           doc.setFontSize(7); doc.setFont("helvetica", "normal")
           doc.setTextColor(...C.dark)
           doc.text(obsLines, MARGIN + 4, y + 8.2)
           y += obsH + 2
         }
 
-        // ── Fotos do item (2 por linha, portrait; 1 por linha, landscape) ──
+        // â”€â”€ Fotos do item (2 por linha, portrait; 1 por linha, landscape) â”€â”€
         if (itemFotos.length > 0) {
           const FOTO_GAP     = 4
           const CAPTION_H_F  = 6
-          const MAX_FOTO_H   = 70   // altura máx de uma foto no relatório
+          const MAX_FOTO_H   = 70   // altura mÃ¡x de uma foto no relatÃ³rio
           const COL_W        = (W - MARGIN * 2 - FOTO_GAP) / 2
 
           let fi = 0
@@ -827,7 +873,7 @@ export async function generateOSPDF(data: OSReportData) {
               fi++
             }
           }
-          y += 2 // pequeno respiro após o bloco de fotos
+          y += 2 // pequeno respiro apÃ³s o bloco de fotos
         }
 
         // Separador fino entre itens
@@ -840,11 +886,11 @@ export async function generateOSPDF(data: OSReportData) {
   }
 
   if (data.comentarios.length > 0) {
-    if (y > H - 50) { doc.addPage(); drawHeader("Ocorrências"); y = 26; }
-    y = sectionBar(y, "5. Ocorrências Identificadas")
+    if (y > H - 50) { doc.addPage(); drawHeader("OcorrÃªncias"); y = 26; }
+    y = sectionBar(y, "5. OcorrÃªncias Identificadas")
 
     for (const [idx, c] of data.comentarios.entries()) {
-      if (y > H - 32) { doc.addPage(); drawHeader("Ocorrências (cont.)"); y = 26; }
+      if (y > H - 32) { doc.addPage(); drawHeader("OcorrÃªncias (cont.)"); y = 26; }
 
       doc.setFillColor(...C.surface)
       doc.roundedRect(MARGIN, y, W - MARGIN * 2, 18, 1.5, 1.5, "F")
@@ -871,11 +917,11 @@ export async function generateOSPDF(data: OSReportData) {
     y += 2
   }
 
-  // ══════════════════════════════════════════
-  // PÁGINA 3 — IMPACTO + CONCLUSÃO
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // PÃGINA 3 â€” IMPACTO + CONCLUSÃƒO
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   doc.addPage()
-  drawHeader("Impacto Operacional e Conclusão")
+  drawHeader("Impacto Operacional e ConclusÃ£o")
   y = 26
 
   y = sectionBar(y, "6. Impacto Operacional")
@@ -914,16 +960,16 @@ export async function generateOSPDF(data: OSReportData) {
     doc.setFontSize(10); doc.setTextColor(...C.navy)
     doc.text(data.sla.tempoFormatado, W / 2, y + 15, { align: "center" })
 
-    doc.setFontSize(7); doc.setTextColor(...C.navyMuted); doc.text("REFERÊNCIA", W - MARGIN - 4, y + 8, { align: "right" })
+    doc.setFontSize(7); doc.setTextColor(...C.navyMuted); doc.text("REFERÃŠNCIA", W - MARGIN - 4, y + 8, { align: "right" })
     doc.setFontSize(8.5); doc.setTextColor(...C.navy)
     doc.text(data.sla.referenciaManual, W - MARGIN - 4, y + 15, { align: "right" })
     y += 28
   }
 
-  if (y > H - 50) { doc.addPage(); drawHeader("Conclusão Técnica"); y = 26; }
-  y = sectionBar(y, "7. Conclusão Técnica")
+  if (y > H - 50) { doc.addPage(); drawHeader("ConclusÃ£o TÃ©cnica"); y = 26; }
+  y = sectionBar(y, "7. ConclusÃ£o TÃ©cnica")
 
-  const textoConclusaoTecnica = data.conclusaoManual?.trim() || "Conclusão técnica não informada."
+  const textoConclusaoTecnica = data.conclusaoManual?.trim() || "ConclusÃ£o tÃ©cnica nÃ£o informada."
   doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.dark)
   const linhasConclusaoManual = doc.splitTextToSize(textoConclusaoTecnica, W - MARGIN * 2)
@@ -941,17 +987,17 @@ export async function generateOSPDF(data: OSReportData) {
 
   doc.setFontSize(8); doc.setFont("helvetica", "bold")
   doc.setTextColor(...C.white)
-  doc.text("Identificações", MARGIN + 4, y + 8)
+  doc.text("IdentificaÃ§Ãµes", MARGIN + 4, y + 8)
 
   doc.setFontSize(7.3); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.white)
   doc.text(`Fiscal: ${FISCAL_FIXO_NOME}`, MARGIN + 4, y + 15)
-  doc.text(`Técnico Executante: ${data.abertoPor?.nome ?? "Não informado"}`, MARGIN + 4, y + 21)
-  doc.text(`Responsável Técnico: ${data.responsavel?.nome ?? "Não informado"}`, MARGIN + 4, y + 27)
+  doc.text(`TÃ©cnico Executante: ${data.abertoPor?.nome ?? "NÃ£o informado"}`, MARGIN + 4, y + 21)
+  doc.text(`ResponsÃ¡vel TÃ©cnico: ${data.responsavel?.nome ?? "NÃ£o informado"}`, MARGIN + 4, y + 27)
 
   doc.setFontSize(7); doc.setTextColor(...C.white)
-  doc.text(`Relatório emitido em ${geradoEm}`, MARGIN + 4, y + 35)
-  doc.text("Operação: P&D Casa Nova · Cliente: AXIA", MARGIN + 4, y + 39)
+  doc.text(`RelatÃ³rio emitido em ${geradoEm}`, MARGIN + 4, y + 35)
+  doc.text("OperaÃ§Ã£o: P&D Casa Nova Â· Cliente: AXIA", MARGIN + 4, y + 39)
 
   if (radiusPng) {
     const logoH = 12
@@ -961,16 +1007,16 @@ export async function generateOSPDF(data: OSReportData) {
 
   y += 48
 
-  // ══════════════════════════════════════════
-  // REGISTRO FOTOGRÁFICO — as fotos já aparecem inline junto a cada item
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // REGISTRO FOTOGRÃFICO â€” as fotos jÃ¡ aparecem inline junto a cada item
   // do checklist. Aqui mantemos apenas anexos PDF avulsos da OS.
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   const imagens = data.anexos.filter((a) => a.tipo.startsWith("image/"))
   const pdfsAnexos = data.anexos.filter((a) => a.tipo === "application/pdf")
 
-  // Fotos avulsas da OS (não vinculadas a nenhum item do checklist) ─────
-  // São aquelas que existem em data.anexos mas cujo conteúdo não foi
-  // vinculado a nenhum item. Exibimos numa seção dedicada ao final.
+  // Fotos avulsas da OS (nÃ£o vinculadas a nenhum item do checklist) â”€â”€â”€â”€â”€
+  // SÃ£o aquelas que existem em data.anexos mas cujo conteÃºdo nÃ£o foi
+  // vinculado a nenhum item. Exibimos numa seÃ§Ã£o dedicada ao final.
   if (imagens.length > 0) {
     const PHOTO_MARGIN_TOP = 26
     const PHOTO_MARGIN_BOT = 18
@@ -1046,12 +1092,12 @@ export async function generateOSPDF(data: OSReportData) {
     for (const slot of slots) {
       doc.addPage()
       if (firstPhotoPage) {
-        drawHeader("Anexos Fotográficos da OS")
+        drawHeader("Anexos FotogrÃ¡ficos da OS")
         firstPhotoPage = false
         y = PHOTO_MARGIN_TOP
-        y = sectionBar(y, "Anexos Fotográficos da OS")
+        y = sectionBar(y, "Anexos FotogrÃ¡ficos da OS")
       } else {
-        drawHeader("Anexos Fotográficos (cont.)")
+        drawHeader("Anexos FotogrÃ¡ficos (cont.)")
         y = PHOTO_MARGIN_TOP
       }
 
@@ -1059,7 +1105,7 @@ export async function generateOSPDF(data: OSReportData) {
 
       if (slot.type === "error") {
         doc.setFontSize(8); doc.setTextColor(...C.red)
-        doc.text("Imagem indisponível", MARGIN, y + 10)
+        doc.text("Imagem indisponÃ­vel", MARGIN, y + 10)
         continue
       }
 
@@ -1101,7 +1147,7 @@ export async function generateOSPDF(data: OSReportData) {
     }
   }
 
-  // ── Anexos PDF ──
+  // â”€â”€ Anexos PDF â”€â”€
   if (pdfsAnexos.length > 0) {
     doc.addPage()
     drawHeader("Anexos PDF")
@@ -1110,20 +1156,20 @@ export async function generateOSPDF(data: OSReportData) {
     doc.setFontSize(8); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.muted)
     doc.text(
-      "Os arquivos PDF listados abaixo estão disponíveis no sistema de O&M e podem ser solicitados à equipe Radius Mining.",
+      "Os arquivos PDF listados abaixo estÃ£o disponÃ­veis no sistema de O&M e podem ser solicitados Ã  equipe Radius Mining.",
       MARGIN, y, { maxWidth: W - MARGIN * 2 }
     )
     y += 10
     for (const p of pdfsAnexos) {
       doc.setFontSize(8); doc.setFont("helvetica", "bold"); doc.setTextColor(...C.charcoal)
-      doc.text(`• ${p.nome}`, MARGIN + 3, y)
+      doc.text(`â€¢ ${p.nome}`, MARGIN + 3, y)
       y += 6
     }
   }
 
-  // ══════════════════════════════════════════
-  // FOOTER EM TODAS AS PÁGINAS (p ≥ 2)
-  // ══════════════════════════════════════════
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+  // FOOTER EM TODAS AS PÃGINAS (p â‰¥ 2)
+  // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   drawFooter()
 
   return doc

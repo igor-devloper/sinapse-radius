@@ -28,6 +28,7 @@ export default async function AdminPage() {
       SUPERVISOR: usuarios.filter((u) => u.cargo === "SUPERVISOR").length,
       TECNICO: usuarios.filter((u) => u.cargo === "TECNICO").length,
       VISUALIZADOR: usuarios.filter((u) => u.cargo === "VISUALIZADOR").length,
+      ENGENHEIRO: usuarios.filter((u) => u.cargo === "ENGENHEIRO").length,
     },
   };
 
@@ -46,6 +47,7 @@ export default async function AdminPage() {
           { label: "Admin", value: stats.porCargo.ADMIN, class: "bg-violet-50 text-violet-700" },
           { label: "Supervisor", value: stats.porCargo.SUPERVISOR, class: "bg-blue-50 text-blue-700" },
           { label: "Técnico", value: stats.porCargo.TECNICO, class: "bg-orange-50 text-orange-700" },
+          { label: "Engenheiro Elétricista" , value: stats.porCargo.ENGENHEIRO, class: "bg-amber-100 text-amber-600"}
         ].map((s) => (
           <div key={s.label} className={`rounded-xl p-4 ${s.class}`}>
             <p className="text-2xl font-semibold">{s.value}</p>

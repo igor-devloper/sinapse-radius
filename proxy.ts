@@ -24,11 +24,6 @@ export default clerkMiddleware(async (auth, req) => {
     (sessionClaims?.metadata as { cargo?: string })?.cargo ??
     (sessionClaims as Record<string, unknown>)?.cargo as string | undefined;
 
-  console.log("[Middleware] userId:", userId);
-  console.log("[Middleware] sessionClaims:", JSON.stringify(sessionClaims));
-  console.log("[Middleware] cargo:", cargo);
-  console.log("[Middleware] pathname:", req.nextUrl.pathname);
-
   if (!cargo) {
     if (req.nextUrl.pathname !== "/sem-acesso") {
       return NextResponse.redirect(new URL("/sem-acesso", req.url));

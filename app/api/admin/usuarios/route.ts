@@ -29,7 +29,7 @@ export async function GET(req: NextRequest) {
 
 const atualizarCargoSchema = z.object({
   usuarioId: z.string(),
-  cargo: z.enum(["ADMIN", "SUPERVISOR", "TECNICO", "VISUALIZADOR"]),
+  cargo: z.enum(["ADMIN", "SUPERVISOR", "TECNICO", "VISUALIZADOR", "ENGENHEIRO"]),
   ativo: z.boolean().optional(),
 });
 

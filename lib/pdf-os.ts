@@ -1102,7 +1102,7 @@ export async function generateOSPDF(data: OSReportData) {
   doc.text(`Responsável Técnico: ${data.responsavel?.nome ?? "Não informado"}`, MARGIN + 4, y + 27)
 
   doc.setFontSize(7); doc.setTextColor(...C.white)
-  doc.text(`Relatório emitido em ${geradoEm}`, MARGIN + 4, y + 35)
+  // doc.text(`Relatório emitido em ${geradoEm}`, MARGIN + 4, y + 35)
   doc.text("Operação: P&D Casa Nova - Cliente: AXIA", MARGIN + 4, y + 39)
 
   if (radiusPng) {

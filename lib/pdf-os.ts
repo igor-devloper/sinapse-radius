@@ -375,6 +375,17 @@ async function urlToDataURL(url: string): Promise<string> {
 
 function detectFormat(d: string): "PNG" | "JPEG" { return /^data:image\/png/i.test(d) ? "PNG" : "JPEG" }
 function stripPrefix(d: string) { return d.replace(/^data:image\/\w+;base64,/, "") }
+function getCanvasExportFormat(dataUrl: string) {
+  return /^data:image\/png/i.test(dataUrl)
+    ? { mime: "image/png", quality: undefined, fmt: "PNG" as const }
+    : { mime: "image/jpeg", quality: 0.92, fmt: "JPEG" as const }
+}
+function getPhotoLayoutKind(width: number, height: number): "single" | "double" {
+  const aspect = width / Math.max(height, 1)
+  if (aspect >= 1.15) return "single"
+  if (aspect <= 0.72) return "single"
+  return "double"
+}
 
 /**
  * Lê a orientação EXIF de um JPEG e retorna o grau de rotação necessário
@@ -448,32 +459,27 @@ function getExifRotation(base64: string): number {
  * Recebe um dataURL de imagem, aplica a rotação EXIF via canvas e
  * retorna { dataUrl, width, height } já corrigidos.
  */
-async function normalizeImageOrientation(
+async function getImageDisplaySize(
   dataUrl: string
 ): Promise<{ dataUrl: string; width: number; height: number }> {
   return new Promise((resolve) => {
     const img = new Image()
     img.onload = () => {
-      const rotation = /^data:image\/jpeg/i.test(dataUrl)
-        ? getExifRotation(dataUrl.replace(/^data:image\/\w+;base64,/, ""))
-        : 0
-
-      const needsRotate = rotation === 90 || rotation === 270
-      const cw = needsRotate ? img.height : img.width
-      const ch = needsRotate ? img.width  : img.height
-
+      const width = img.naturalWidth || img.width || 800
+      const height = img.naturalHeight || img.height || 600
       const canvas = document.createElement("canvas")
-      canvas.width  = cw
-      canvas.height = ch
+      canvas.width = width
+      canvas.height = height
       const ctx = canvas.getContext("2d")!
 
-      ctx.save()
-      ctx.translate(cw / 2, ch / 2)
-      ctx.rotate((rotation * Math.PI) / 180)
-      ctx.drawImage(img, -img.width / 2, -img.height / 2)
-      ctx.restore()
+      ctx.drawImage(img, 0, 0, width, height)
 
-      resolve({ dataUrl: canvas.toDataURL("image/jpeg", 0.92), width: cw, height: ch })
+      const exportFormat = getCanvasExportFormat(dataUrl)
+      resolve({
+        dataUrl: canvas.toDataURL(exportFormat.mime, exportFormat.quality),
+        width,
+        height,
+      })
     }
     img.onerror = () => resolve({ dataUrl, width: 800, height: 600 })
     img.src = dataUrl
@@ -694,7 +700,7 @@ export async function generateOSPDF(data: OSReportData) {
 
   doc.setFontSize(8); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.slate)
-  doc.text(`OS ${data.numero}`, W / 2, capaTituloY + tituloCapa.length * 7 + 16, { align: "center" })
+  doc.text(`${data.numero}`, W / 2, capaTituloY + tituloCapa.length * 7 + 16, { align: "center" })
 
   doc.setDrawColor(...C.navyMuted)
   doc.setLineWidth(0.4)
@@ -820,7 +826,7 @@ export async function generateOSPDF(data: OSReportData) {
             try {
               const proxyUrl = `/api/files/anexo?src=${encodeURIComponent(foto.url)}&filename=${encodeURIComponent(foto.nome)}&inline=1`
               const rawDataUrl = await urlToDataURL(proxyUrl)
-              const { dataUrl, width, height } = await normalizeImageOrientation(rawDataUrl)
+              const { dataUrl, width, height } = await getImageDisplaySize(rawDataUrl)
               return {
                 itemId: item.itemId,
                 dataUrl,
@@ -904,7 +910,7 @@ export async function generateOSPDF(data: OSReportData) {
           y += obsH + 2
         }
 
-        // Fotos do item (2 por linha portrait; 1 por linha landscape)
+        // Fotos do item (layout responsivo conforme proporÃ§Ã£o visÃ­vel da imagem)
         if (itemFotos.length > 0) {
           const FOTO_GAP     = 4
           const CAPTION_H_F  = 6
@@ -914,9 +920,9 @@ export async function generateOSPDF(data: OSReportData) {
           let fi = 0
           while (fi < itemFotos.length) {
             const foto = itemFotos[fi]
-            const isLandscape = foto.w >= foto.h
+            const layoutKind = getPhotoLayoutKind(foto.w, foto.h)
 
-            if (isLandscape) {
+            if (layoutKind === "single") {
               const scale = Math.min((W - MARGIN * 2) / foto.w, MAX_FOTO_H / foto.h)
               const fw = foto.w * scale
               const fh = foto.h * scale
@@ -938,7 +944,7 @@ export async function generateOSPDF(data: OSReportData) {
               fi++
             } else {
               const fotoA = itemFotos[fi]
-              const fotoB = itemFotos[fi + 1] && itemFotos[fi + 1].w < itemFotos[fi + 1].h
+              const fotoB = itemFotos[fi + 1] && getPhotoLayoutKind(itemFotos[fi + 1].w, itemFotos[fi + 1].h) === "double"
                 ? itemFotos[fi + 1]
                 : null
 
@@ -1042,35 +1048,35 @@ export async function generateOSPDF(data: OSReportData) {
     y += lines.length * 4.5 + 3
   }
 
-  if (data.sla.isCorretiva) {
-    y += 2
-    if (y > H - 40) { doc.addPage(); drawHeader("SLA"); y = 26; }
+  // if (data.sla.isCorretiva) {
+  //   y += 2
+  //   if (y > H - 40) { doc.addPage(); drawHeader("SLA"); y = 26; }
 
-    const slaColors: Record<string, Color> = {
-      green: [34, 84, 61], yellow: [196, 138, 24], orange: [217, 119, 6], red: [185, 28, 28],
-    }
-    const slaColor = slaColors[data.sla.statusColor] ?? C.muted
+  //   const slaColors: Record<string, Color> = {
+  //     green: [34, 84, 61], yellow: [196, 138, 24], orange: [217, 119, 6], red: [185, 28, 28],
+  //   }
+  //   const slaColor = slaColors[data.sla.statusColor] ?? C.muted
 
-    doc.setFillColor(...C.bluePale)
-    doc.roundedRect(MARGIN, y, W - MARGIN * 2, 22, 2, 2, "F")
-    doc.setDrawColor(...C.navyMuted)
-    doc.setLineWidth(0.3)
-    doc.roundedRect(MARGIN, y, W - MARGIN * 2, 22, 2, 2, "S")
+  //   doc.setFillColor(...C.bluePale)
+  //   doc.roundedRect(MARGIN, y, W - MARGIN * 2, 22, 2, 2, "F")
+  //   doc.setDrawColor(...C.navyMuted)
+  //   doc.setLineWidth(0.3)
+  //   doc.roundedRect(MARGIN, y, W - MARGIN * 2, 22, 2, 2, "S")
 
-    doc.setFontSize(7); doc.setFont("helvetica", "bold")
-    doc.setTextColor(...C.navyMuted); doc.text("STATUS SLA", MARGIN + 4, y + 8)
-    doc.setFontSize(10); doc.setTextColor(...slaColor)
-    doc.text(data.sla.statusLabel, MARGIN + 4, y + 15)
+  //   doc.setFontSize(7); doc.setFont("helvetica", "bold")
+  //   doc.setTextColor(...C.navyMuted); doc.text("STATUS SLA", MARGIN + 4, y + 8)
+  //   doc.setFontSize(10); doc.setTextColor(...slaColor)
+  //   doc.text(data.sla.statusLabel, MARGIN + 4, y + 15)
 
-    doc.setFontSize(7); doc.setTextColor(...C.navyMuted); doc.text("TEMPO DECORRIDO", W / 2, y + 8, { align: "center" })
-    doc.setFontSize(10); doc.setTextColor(...C.navy)
-    doc.text(data.sla.tempoFormatado, W / 2, y + 15, { align: "center" })
+  //   doc.setFontSize(7); doc.setTextColor(...C.navyMuted); doc.text("TEMPO DECORRIDO", W / 2, y + 8, { align: "center" })
+  //   doc.setFontSize(10); doc.setTextColor(...C.navy)
+  //   doc.text(data.sla.tempoFormatado, W / 2, y + 15, { align: "center" })
 
-    doc.setFontSize(7); doc.setTextColor(...C.navyMuted); doc.text("REFERÊNCIA", W - MARGIN - 4, y + 8, { align: "right" })
-    doc.setFontSize(8.5); doc.setTextColor(...C.navy)
-    doc.text(data.sla.referenciaManual, W - MARGIN - 4, y + 15, { align: "right" })
-    y += 28
-  }
+  //   doc.setFontSize(7); doc.setTextColor(...C.navyMuted); doc.text("REFERÊNCIA", W - MARGIN - 4, y + 8, { align: "right" })
+  //   doc.setFontSize(8.5); doc.setTextColor(...C.navy)
+  //   doc.text(data.sla.referenciaManual, W - MARGIN - 4, y + 15, { align: "right" })
+  //   y += 28
+  // }
 
   if (y > H - 50) { doc.addPage(); drawHeader("Conclusão Técnica"); y = 26; }
   y = sectionBar(y, "7. Conclusão Técnica")
@@ -1102,7 +1108,7 @@ export async function generateOSPDF(data: OSReportData) {
   doc.text(`Responsável Técnico: ${data.responsavel?.nome ?? "Não informado"}`, MARGIN + 4, y + 27)
 
   doc.setFontSize(7); doc.setTextColor(...C.white)
-  doc.text(`Relatório emitido em ${geradoEm}`, MARGIN + 4, y + 35)
+  // doc.text(`Relatório emitido em ${geradoEm}`, MARGIN + 4, y + 35)
   doc.text("Operação: P&D Casa Nova - Cliente: AXIA", MARGIN + 4, y + 39)
 
   if (radiusPng) {
@@ -1142,7 +1148,7 @@ export async function generateOSPDF(data: OSReportData) {
       clean: string
       w: number
       h: number
-      isLandscape: boolean
+      layoutKind: "single" | "double"
     }
 
     const loadedImages: Array<LoadedImage | null> = await Promise.all(
@@ -1150,7 +1156,7 @@ export async function generateOSPDF(data: OSReportData) {
         try {
           const proxyUrl = `/api/files/anexo?src=${encodeURIComponent(img.url)}&filename=${encodeURIComponent(img.nome)}&inline=1`
           const rawDataUrl = await urlToDataURL(proxyUrl)
-          const { dataUrl, width, height } = await normalizeImageOrientation(rawDataUrl)
+          const { dataUrl, width, height } = await getImageDisplaySize(rawDataUrl)
           return {
             nome: img.nome,
             dataUrl,
@@ -1158,7 +1164,7 @@ export async function generateOSPDF(data: OSReportData) {
             clean: stripPrefix(dataUrl),
             w: width,
             h: height,
-            isLandscape: width >= height,
+            layoutKind: getPhotoLayoutKind(width, height),
           }
         } catch {
           return null
@@ -1178,10 +1184,10 @@ export async function generateOSPDF(data: OSReportData) {
       const item = queue.shift()
       if (!item) { slots.push({ type: "error", nome: "desconhecido" }); continue; }
 
-      if (item.isLandscape) {
+      if (item.layoutKind === "single") {
         slots.push({ type: "single", img: item })
       } else {
-        const nextIdx = queue.findIndex((q) => q !== null && !q.isLandscape)
+        const nextIdx = queue.findIndex((q) => q !== null && q.layoutKind === "double")
         if (nextIdx !== -1) {
           const pair = queue.splice(nextIdx, 1)[0]!
           slots.push({ type: "double", left: item, right: pair })

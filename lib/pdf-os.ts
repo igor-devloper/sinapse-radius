@@ -694,7 +694,7 @@ export async function generateOSPDF(data: OSReportData) {
 
   doc.setFontSize(8); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.slate)
-  doc.text(`OS ${data.numero}`, W / 2, capaTituloY + tituloCapa.length * 7 + 16, { align: "center" })
+  doc.text(`${data.numero}`, W / 2, capaTituloY + tituloCapa.length * 7 + 16, { align: "center" })
 
   doc.setDrawColor(...C.navyMuted)
   doc.setLineWidth(0.4)

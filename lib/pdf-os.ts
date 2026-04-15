@@ -219,7 +219,7 @@ function buildIntroducaoLimpa(data: OSReportData, tipoVisita: string) {
       `A atuação teve foco no subsistema ${data.subsistema}, contemplando diagnóstico da falha, execução das intervenções corretivas previstas no escopo e registro das evidências de campo no presente relatório.`,
       `A manutenção ${dataConclusao !== "—" ? `foi concluída em ${dataConclusao}` : "permaneceu em execução até o fechamento deste relatório"}, em conformidade com o escopo técnico definido para esta ordem de serviço.`,
     ]
-  }
+  } 
 
   return [
     `A equipe técnica da Radius Mining executou a ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
@@ -673,6 +673,12 @@ export async function generateOSPDF(data: OSReportData) {
     return y + 12
   }
 
+  function drawJustifiedParagraph(text: string, x: number, y: number, width: number, lineHeight = 4.5) {
+    const lines = doc.splitTextToSize(text, width)
+    doc.text(lines, x, y, { align: "justify", maxWidth: width })
+    return lines.length * lineHeight
+  }
+
   // ══════════════════════════════════════════
   // CAPA
   // ══════════════════════════════════════════
@@ -734,9 +740,7 @@ export async function generateOSPDF(data: OSReportData) {
     if (y > H - 30) { doc.addPage(); drawHeader("Introdução"); y = 28; }
     doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.dark)
-    const lines = doc.splitTextToSize(para, W - MARGIN * 2)
-    doc.text(lines, MARGIN, y)
-    y += lines.length * 4.5 + 2.5
+    y += drawJustifiedParagraph(para, MARGIN, y, W - MARGIN * 2) + 2.5
   }
 
   if (data.sla.isCorretiva) {
@@ -767,7 +771,7 @@ export async function generateOSPDF(data: OSReportData) {
 
       doc.setFontSize(8); doc.setFont("helvetica", "normal")
       doc.setTextColor(...C.dark)
-      doc.text(textoLines, MARGIN + 4, y + 10)
+      doc.text(textoLines, MARGIN + 4, y + 10, { align: "justify", maxWidth: W - MARGIN * 2 - 10 })
       y += boxH + 4
     }
   }
@@ -1043,9 +1047,7 @@ export async function generateOSPDF(data: OSReportData) {
     if (y > H - 30) { doc.addPage(); drawHeader("Impacto Operacional"); y = 28; }
     doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
     doc.setTextColor(...C.dark)
-    const lines = doc.splitTextToSize(para, W - MARGIN * 2)
-    doc.text(lines, MARGIN, y)
-    y += lines.length * 4.5 + 3
+    y += drawJustifiedParagraph(para, MARGIN, y, W - MARGIN * 2) + 3
   }
 
   // if (data.sla.isCorretiva) {
@@ -1084,9 +1086,7 @@ export async function generateOSPDF(data: OSReportData) {
   const textoConclusaoTecnica = data.conclusaoManual?.trim() || "Conclusão técnica não informada."
   doc.setFontSize(8.5); doc.setFont("helvetica", "normal")
   doc.setTextColor(...C.dark)
-  const linhasConclusaoManual = doc.splitTextToSize(textoConclusaoTecnica, W - MARGIN * 2)
-  doc.text(linhasConclusaoManual, MARGIN, y)
-  y += linhasConclusaoManual.length * 4.5 + 4
+  y += drawJustifiedParagraph(textoConclusaoTecnica, MARGIN, y, W - MARGIN * 2) + 4
 
   y += 6
   if (y > H - 40) { doc.addPage(); drawHeader("Assinatura"); y = 26; }
@@ -1266,7 +1266,7 @@ export async function generateOSPDF(data: OSReportData) {
     doc.setTextColor(...C.muted)
     doc.text(
       "Os arquivos PDF listados abaixo estão disponíveis no sistema de O&M e podem ser solicitados à equipe Radius Mining.",
-      MARGIN, y, { maxWidth: W - MARGIN * 2 }
+      MARGIN, y, { align: "justify", maxWidth: W - MARGIN * 2 }
     )
     y += 10
     for (const p of pdfsAnexos) {

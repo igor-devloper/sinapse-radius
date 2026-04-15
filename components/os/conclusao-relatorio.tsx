@@ -58,7 +58,7 @@ export function ConclusaoRelatorio({
           readOnly={!canEdit}
           rows={6}
           placeholder="Ex.: Durante a visita foi identificado desvio térmico no conjunto X, mitigado com ajuste de aperto e monitoramento recomendado por 7 dias..."
-          className="w-full rounded-xl border border-gray-200 bg-white p-3 text-sm leading-relaxed placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-300 read-only:bg-gray-50 read-only:text-gray-600"
+          className="w-full rounded-xl border border-gray-200 bg-white p-3 text-justify text-sm leading-relaxed placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-violet-300 read-only:bg-gray-50 read-only:text-gray-600"
         />
         {canEdit && (
           <button
@@ -75,4 +75,3 @@ export function ConclusaoRelatorio({
     </div>
   );
 }
-

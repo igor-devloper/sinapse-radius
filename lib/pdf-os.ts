@@ -162,14 +162,14 @@ function buildIntroducao(data: OSReportData, tipoVisita: string) {
   const dataConclusao = fmtDate(data.dataConclusao)
   if (data.sla.isCorretiva) {
     return [
-      `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de manutenção corretiva, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
+      `A equipe técnica da Radius Mining executou a ${data.numero} no contexto de manutenção corretiva, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
       `A atuação teve foco no subsistema ${data.subsistema}, contemplando diagnóstico da falha, execução das intervenções corretivas previstas no escopo e registro das evidências de campo no presente relatório.`,
       `A manutenção ${dataConclusao !== "—" ? `foi concluída em ${dataConclusao}` : "permaneceu em execução até o fechamento deste relatório"}, em conformidade com o escopo técnico definido para esta ordem de serviço.`,
     ]
   }
 
   return [
-    `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
+    `A equipe técnica da Radius Mining executou a ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
     `A visita teve foco no subsistema ${data.subsistema}, com verificação dos itens planejados, registro das evidências de campo e consolidação dos resultados no presente relatório.`,
     `A atividade foi concluída em ${dataConclusao}, conforme o escopo definido para esta ordem de serviço.`,
   ]
@@ -215,14 +215,14 @@ function buildIntroducaoLimpa(data: OSReportData, tipoVisita: string) {
   const dataConclusao = fmtDate(data.dataConclusao)
   if (data.sla.isCorretiva) {
     return [
-      `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de manutenção corretiva, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
+      `A equipe técnica da Radius Mining executou a ${data.numero} no contexto de manutenção corretiva, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
       `A atuação teve foco no subsistema ${data.subsistema}, contemplando diagnóstico da falha, execução das intervenções corretivas previstas no escopo e registro das evidências de campo no presente relatório.`,
       `A manutenção ${dataConclusao !== "—" ? `foi concluída em ${dataConclusao}` : "permaneceu em execução até o fechamento deste relatório"}, em conformidade com o escopo técnico definido para esta ordem de serviço.`,
     ]
   }
 
   return [
-    `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
+    `A equipe técnica da Radius Mining executou a ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
     `A visita teve foco no subsistema ${data.subsistema}, com verificação dos itens planejados, registro das evidências de campo e consolidação dos resultados no presente relatório.`,
     `A atividade foi concluída em ${dataConclusao}, conforme o escopo definido para esta ordem de serviço.`,
   ]
@@ -266,14 +266,14 @@ function buildPdfIntroducao(data: OSReportData, tipoVisita: string) {
   const dataConclusao = fmtDate(data.dataConclusao)
   if (data.sla.isCorretiva) {
     return [
-      `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de manutenção corretiva, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
+      `A equipe técnica da Radius Mining executou a ${data.numero} no contexto de manutenção corretiva, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
       `A atuação teve foco no subsistema ${data.subsistema}, contemplando diagnóstico da falha, execução das intervenções corretivas previstas no escopo e registro das evidências de campo no presente relatório.`,
       `A manutenção ${dataConclusao !== "—" ? `foi concluída em ${dataConclusao}` : "permaneceu em execução até o fechamento deste relatório"}, em conformidade com o escopo técnico definido para esta ordem de serviço.`,
     ]
   }
 
   return [
-    `A equipe técnica da Radius Mining executou a OS ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
+    `A equipe técnica da Radius Mining executou a ${data.numero} no contexto de ${tipoVisita.toLowerCase()}, com atendimento ao cliente AXIA na operação de Casa Nova - BA.`,
     `A visita teve foco no subsistema ${data.subsistema}, com verificação dos itens planejados, registro das evidências de campo e consolidação dos resultados no presente relatório.`,
     `A atividade foi concluída em ${dataConclusao}, conforme o escopo definido para esta ordem de serviço.`,
   ]

@@ -8,11 +8,13 @@ import {
   Plus,
   CheckCircle2,
   Trash2,
+  ScanLine,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import BarcodeScanner from "@/components/miners/barcode-scanner";
 
 interface AsicAsset {
   id: string;
@@ -86,6 +88,7 @@ export default function MinersPageClient({
   } | null>(null);
 
   const [showAddSingle, setShowAddSingle] = useState(false);
+  const [showScanner, setShowScanner] = useState(false);
   const [singleSN, setSingleSN] = useState("");
   const [singleAssetId, setSingleAssetId] = useState(asicAssets[0]?.id ?? "");
   const [singleContainer, setSingleContainer] = useState("");
@@ -191,6 +194,7 @@ export default function MinersPageClient({
 
       setSingleSN("");
       setSingleContainer("");
+      setShowScanner(false);
       setShowAddSingle(false);
       toast.success("Miner criado com sucesso.");
       await fetchMiners(1, true);
@@ -270,15 +274,33 @@ export default function MinersPageClient({
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-xs font-medium text-gray-600">
-                Serial Number *
-              </label>
+              <div className="flex items-center justify-between gap-2">
+                <label className="text-xs font-medium text-gray-600">
+                  Serial Number *
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => setShowScanner((current) => !current)}
+                  className={cn(
+                    "inline-flex items-center gap-2 rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors",
+                    showScanner
+                      ? "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                      : "bg-violet-100 text-violet-700 hover:bg-violet-200"
+                  )}
+                >
+                  <ScanLine className="h-3.5 w-3.5" />
+                  {showScanner ? "Fechar camera" : "Ler via camera"}
+                </button>
+              </div>
+
               <Input
                 value={singleSN}
                 onChange={(e) => setSingleSN(normalizeSN(e.target.value))}
                 placeholder="Ex: H00ZFCABDABJF004N"
                 className="rounded-xl font-mono"
               />
+
               {singleSN ? (
                 <p
                   className={cn(
@@ -290,6 +312,19 @@ export default function MinersPageClient({
                     ? "Formato de SN válido."
                     : "Formato ainda inválido. Revise a leitura."}
                 </p>
+              ) : null}
+
+              {showScanner ? (
+                <div className="rounded-2xl border border-violet-200 bg-violet-50 p-3">
+                  <BarcodeScanner
+                    onScan={(value) => {
+                      setSingleSN(normalizeSN(value));
+                      setShowScanner(false);
+                      toast.success("SN lido com sucesso.");
+                    }}
+                    onClose={() => setShowScanner(false)}
+                  />
+                </div>
               ) : null}
             </div>
 
@@ -333,7 +368,10 @@ export default function MinersPageClient({
             </button>
 
             <button
-              onClick={() => setShowAddSingle(false)}
+              onClick={() => {
+                setShowScanner(false);
+                setShowAddSingle(false);
+              }}
               className="rounded-xl border border-gray-200 px-4 py-2 text-sm text-gray-600 hover:bg-gray-50"
             >
               Cancelar
@@ -347,7 +385,7 @@ export default function MinersPageClient({
           <div className="flex items-center justify-between">
             <p className="flex items-center gap-2 text-sm font-semibold text-violet-800">
               <Upload className="h-4 w-4" />
-              Importação em Massa de Miners
+              Importação em massa de miners
             </p>
 
             <button
@@ -392,7 +430,7 @@ export default function MinersPageClient({
 
           <div className="space-y-1.5">
             <label className="text-xs font-medium text-violet-800">
-              Serial Numbers * — um por linha ou separados por vírgula
+              Serial Numbers * - um por linha ou separados por vírgula
             </label>
 
             <textarea
@@ -472,7 +510,6 @@ export default function MinersPageClient({
             ))}
           </select>
         )}
-
       </div>
 
       {!fetched ? (
